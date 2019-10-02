@@ -5,7 +5,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from nmtlab.utils import OPTS
@@ -32,8 +31,6 @@ class VAEBottleneck(nn.Module):
             var = F.softplus(vec[:, :, self.z_size:])
             if residual_q is not None:
                 var = 0.5 * (var + F.softplus(residual_q[:, :, self.z_size:]))
-            if OPTS.fixgaus:
-                var = var ** 2
             noise = mu.clone()
             noise = noise.normal_()
             z = mu + noise * var

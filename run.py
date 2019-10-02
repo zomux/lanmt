@@ -48,8 +48,8 @@ ap.add_argument("--opt_heads", type=int, default=8)
 ap.add_argument("--opt_shard", type=int, default=32)
 
 # Options for LANMT
-ap.add_argument("--opt_encl", type=int, default=6, help="layers for each z encoder")
-ap.add_argument("--opt_decl", type=int, default=6, help="number of decoder layers")
+ap.add_argument("--opt_priorl", type=int, default=6, help="layers for each z encoder")
+ap.add_argument("--opt_decoderl", type=int, default=6, help="number of decoder layers")
 ap.add_argument("--opt_latentdim", default=8, type=int, help="dimension of latent variables")
 ap.add_argument("--opt_distill", action="store_true", help="train with knowledge distillation")
 ap.add_argument("--opt_annealbudget", action="store_true", help="switch of annealing KL budget")
@@ -132,11 +132,13 @@ basic_options = dict(
     seed=OPTS.seed
 )
 
-lanmt_options = basic_options.copy().update(dict(
-    enc_layers=OPTS.encl, dec_layers=OPTS.decl,
+lanmt_options = basic_options.copy()
+lanmt_options.update(dict(
+    prior_layers=OPTS.priorl, decoder_layers=OPTS.decoderl,
     latent_dim=OPTS.latentdim,
-    KL_budget = 0. if OPTS.finetune else 1.,
+    KL_budget=0. if OPTS.finetune else 1.,
     budget_annealing=OPTS.annealbudget,
+    max_train_steps=training_maxsteps
 ))
 
 nmt = LANMTModel(**lanmt_options)
@@ -148,12 +150,11 @@ if OPTS.Trescore:
 # Training
 if OPTS.train or OPTS.all:
     # Training code
-    max_steps = OPTS.maxsteps
     if OPTS.finetune:
         n_valid_per_epoch = 20
         scheduler = SimpleScheduler(max_epoch=3)
     else:
-        scheduler = TransformerScheduler(warm_steps=OPTS.warmsteps, max_steps=max_steps)
+        scheduler = TransformerScheduler(warm_steps=training_warmsteps, max_steps=training_maxsteps)
     optimizer = optim.Adam(nmt.parameters(), lr=0.0001, betas=(0.9, 0.98))
     trainer = MTTrainer(
         nmt, dataset, optimizer,
@@ -179,7 +180,6 @@ if OPTS.test or OPTS.all:
     import horovod.torch as hvd
     torch.cuda.set_device(hvd.local_rank())
     torch.manual_seed(OPTS.seed)
-    # Translation
     assert os.path.exists(OPTS.model_path)
     nmt.load(OPTS.model_path)
     if torch.cuda.is_available():
@@ -190,12 +190,9 @@ if OPTS.test or OPTS.all:
     src_vocab = Vocab(src_vocab_path)
     tgt_vocab = Vocab(tgt_vocab_path)
     result_path = OPTS.result_path
-    if OPTS.Tgentrain:
-        test_corpus = train_src_corpus
-        result_path = "/tmp/{}.{}".format(os.path.basename(result_path), hvd.local_rank())
-    elif not is_root_node():
+    if not is_root_node():
         sys.exit()
-    lines = open(test_corpus).readlines()
+    lines = open(test_src_corpus).readlines()
     tgt_lines = open(test_tgt_corpus).readlines()
     # Parallel translation
     gibbs_map = defaultdict(int)
@@ -203,12 +200,6 @@ if OPTS.test or OPTS.all:
     target_hits = []
     decode_times = []
     with open(OPTS.result_path, "w") as outf:
-        if OPTS.debug:
-            lines = lines[:500]
-        if OPTS.Telbo:
-            lines = lines[:100]
-        if OPTS.T100:
-            lines = lines[:100]
         for i, line in enumerate(lines):
             tokens = src_vocab.encode("<s> {} </s>".format(line.strip()).split())
             x = torch.tensor([tokens])
@@ -227,8 +218,6 @@ if OPTS.test or OPTS.all:
                     target = targets.cpu().numpy()[0].tolist()
                     if OPTS.debug:
                         init_len = len(tgt_vocab.decode(target)[1:-1])
-                        # if init_len > 12:
-                        #     continue
                         print(" ".join(tgt_vocab.decode(target)[1:-1]), init_len)
                     if OPTS.Telbo:
                         # Record EBLO
@@ -238,13 +227,9 @@ if OPTS.test or OPTS.all:
                         prev_target = tuple(target)
                         prev_z = z
                         z, _ = nmt.compute_Q(x, targets)
-                        targets, _, _, _ = nmt.translate(x, q=z, xz_states=xz_states)
+                        targets, _, _, _ = nmt.translate(x, latent=z, prior_states=xz_states)
                         target = targets[0].cpu().numpy().tolist()
                         cur_target = tuple(target)
-                        if OPTS.debug:
-                            cur_len = len(tgt_vocab.decode(target)[1:-1])
-                            star = "*" if cur_len != init_len else ""
-                            print(" ".join(tgt_vocab.decode(target)[1:-1]), cur_len, star)
                         if OPTS.Telbo:
                             # Record EBLO
                             elbo = nmt.measure_ELBO(x, targets)
