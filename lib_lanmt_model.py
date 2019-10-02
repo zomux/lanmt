@@ -174,17 +174,12 @@ class LANMTModel(Transformer):
         full_vector = self.latent2vector_nn(mean_vector)
         return full_vector
 
-    def predict_length(self, prior_states, z, z_mask, refinement=False):
+    def predict_length(self, prior_states, z, z_mask):
         """Predict the target length based on latent variables and source states.
         """
         mean_z = ((z + prior_states) * z_mask[:, :, None]).sum(1) / z_mask.sum(1)[:, None]
         logits = self.length_predictor(mean_z)
-        if OPTS.Tsearchlen and not refinement:
-            deltas = torch.argsort(logits, 1, descending=True)
-            n_samples = 3 if OPTS.Tsearchz else 9
-            delta = deltas[:, :n_samples] - 50
-        else:
-            delta = logits.argmax(-1) - 50
+        delta = logits.argmax(-1) - 50
         return delta
 
     def compute_final_loss(self, q_prob, prior_prob, x_mask, score_map):
@@ -272,11 +267,12 @@ class LANMTModel(Transformer):
             torch.autograd.backward(decoder_tensors, decoder_grads)
         return score_map
 
-    def translate(self, x, latent=None, prior_states=None):
-        """ Testing code
+    def translate(self, x, latent=None, prior_states=None, latent_search=None):
+        """ Testing codes.
         """
-        if OPTS.Tsearchz or OPTS.Tsearchlen:
-            return self.beam_translate(x, y=y, latent=latent, xz_states=prior_states)
+        if latent_search is not None and latent_search > 1:
+            return self.translate_multiple_latents(x, latent=latent, prior_states=prior_states,
+                                                   candidate_num=latent_search)
         x_mask = torch.ne(x, 0).float()
         # Compute p(z|x)
         if prior_states is None:
@@ -297,55 +293,29 @@ class LANMTModel(Transformer):
         logits = self.expander_nn(decoder_states)
         pred = logits.argmax(-1)
 
-        return pred, y_lens, latent, prior_states
+        return pred, latent, prior_states
 
-    def beam_translate(self, x, y=None, latent=None, xz_states=None, max_candidates=None):
-        if max_candidates is None:
-            max_candidates = OPTS.Tncand
+    def translate_multiple_latents(self, x, latent=None, prior_states=None, candidate_num=None):
         x_mask = torch.ne(x, 0).float()
         # Compute p(z|x)
-        if xz_states is None:
-            xz_states = self.xz_encoders[0](x, x_mask)
+        if prior_states is None:
+            prior_states = self.xz_encoders[0](x, x_mask)
         # Sample a z
         if latent is not None:
             # Z is provided
             z = latent
-        elif y is not None:
-            # Y is provided
-            y_mask = torch.ne(y, 0).float()
-            x_embeds = self.x_embed_layer(x)
-            yz_states = self.compute_Q_states(x_embeds, x_mask, y, y_mask)
-            _, yz_prob, bottleneck_scores = self.sample_from_Q(yz_states)
-            z = self.deterministic_sample_from_prob(yz_prob)
         else:
             # Compute prior to get Z
-            xz_prob = self.xz_softmax[0](xz_states)
-            if OPTS.Tsearchz:
-                n_samples = int(math.sqrt(max_candidates)) if OPTS.Tsearchlen else max_candidates
-                z = self.bottleneck.sample_any_dist(xz_prob, samples=n_samples, noise_level=0.5)
-                z = self.latent2vector_nn(z)
-            else:
-                z = self.deterministic_sample_from_prob(xz_prob)
+            xz_prob = self.xz_softmax[0](prior_states)
+            z = self.bottleneck.sample_any_dist(xz_prob, samples=candidate_num, noise_level=0.5)
+            z = self.latent2vector_nn(z)
         # Predict length
-        if y is None:
-            length_delta = self.predict_length(xz_states, z, x_mask, refinement=latent is not None)
-        else:
-            length_delta = (y_mask.sum(1) - 1 - x_mask.sum(1)).long()
+        length_delta = self.predict_length(prior_states, z, x_mask)
         # Padding z to cover the length of y
-        if OPTS.Tsearchlen and latent is None:
-            if OPTS.Tsearchz:
-                n_samples = z.size(0)
-                z = z.unsqueeze(1).expand(-1, n_samples, -1, -1).contiguous().view(-1, z.size(1), z.size(2))
-                length_delta = length_delta.flatten()
-                x_mask = x_mask.expand(z.size(0), -1)
-            elif z.size(0) < length_delta.size(1):
-                z = z.expand(length_delta.size(1), -1, -1)
-                x_mask = x_mask.expand(length_delta.size(1), -1)
-                length_delta = length_delta[0]
         z_pad, z_pad_mask, y_lens = self.convert_length_with_delta(self, z, x_mask, length_delta + 1)
         assert z_pad.size(1) > 0
         # Run decoder to predict the target words
-        decoder_states = self.decoder(z_pad, z_pad_mask, xz_states, x_mask)
+        decoder_states = self.decoder(z_pad, z_pad_mask, prior_states, x_mask)
         # Get the predictions
         logits = self.expander_nn(decoder_states)
         if (OPTS.Tsearchz or OPTS.Tsearchlen) and not OPTS.Trescore:
@@ -361,15 +331,11 @@ class LANMTModel(Transformer):
         else:
             pred = logits.argmax(-1)
 
-        return pred, y_lens, z, xz_states
-
-    def load_state_dict(self, state_dict):
-        """Remove deep generative model weights.
-        """
-        super(LANMTModel, self).load_state_dict(state_dict, strict=True)
+        return pred, z, prior_states
 
     def measure_ELBO(self, x, y):
-        """Measure the ELBO in the inference time."""
+        """Measure the ELBO in the inference time.
+        """
         x_mask = torch.ne(x, 0).float()
         y_mask = torch.ne(y, 0).float()
         # Compute p(z|x)
@@ -380,7 +346,7 @@ class LANMTModel(Transformer):
         # Sampling for 20 times
         likelihood_list = []
         for _ in range(20):
-            z, yz_prob, bottleneck_scores = self.sample_from_Q(yz_states)
+            z, yz_prob = self.sample_from_Q(yz_states)
             z_pad, _ = self.convert_length(self, z, x_mask, y_mask)
             decoder_states = self.decoder(z_pad, y_mask, xz_states, x_mask)
             logits = self.expander_nn(decoder_states)

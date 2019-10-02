@@ -16,8 +16,9 @@ class VAEBottleneck(nn.Module):
         super(VAEBottleneck, self).__init__()
         self.hidden_size = hidden_size
         if z_size is None:
-            z_size = self.hidden_size
-        self.z_size = z_size
+            self.z_size = self.hidden_size
+        else:
+            self.z_size = z_size
         self.dense = nn.Linear(hidden_size, self.z_size * 2)
 
     def forward(self, x, sampling=True, residual_q=None):
