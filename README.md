@@ -6,7 +6,7 @@ LaNMT: Latent-variable Non-autoregressive Neural Machine Translation with Determ
 ```diff
 - WARNING: Still doing code refactoring, please wait until this message disappears :)
 ```
-
+ 
 
 LaNMT implements a latent-variable framework for non-autoregressive neural machine translation. As you can guess from the code, it's has a simple architecture but powerful performance. For the details of this model, you can check our paper on Arxiv https://arxiv.org/abs/1908.07181 . To cite the paper:
 
@@ -19,6 +19,10 @@ LaNMT implements a latent-variable framework for non-autoregressive neural machi
   volume={abs/1908.07181}
 }
 ```
+
+<p align="center">
+<img src="https://latex.codecogs.com/png.latex?p(y|x) \geq \mathbb{E}_{z \sim q(z|x,y)} \Big[\log p(y|x,z,l_y) + \log p(l_y|z)\Big] - \mathrm{KL}\Big(q(z|x,y) || p(z|x)\Big) " />
+</p>
 
 
 <p align="center">
