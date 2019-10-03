@@ -21,9 +21,8 @@ LaNMT implements a latent-variable framework for non-autoregressive neural machi
 ```
 
 <p align="center">
-<img src="https://latex.codecogs.com/png.latex?p(y|x) \geq \mathbb{E}_{z \sim q(z|x,y)} \Big[\log p(y|x,z,l_y) + \log p(l_y|z)\Big] - \mathrm{KL}\Big(q(z|x,y) || p(z|x)\Big) " />
+<img src="https://latex.codecogs.com/png.latex?p(y|x)%20\geq%20\mathbb{E}_{z%20\sim%20q(z|x,y)}%20\Big[\log%20p(y|x,z,l_y)%20+%20\log%20p(l_y|z)\Big]%20-%20\mathrm{KL}\Big(q(z|x,y)||p(z|x)\Big)" />
 </p>
-
 
 <p align="center">
 <img src="https://i.imgur.com/a3x9tni.png" width="400px"/>
