@@ -15,11 +15,11 @@ LaNMT implements a latent-variable framework for non-autoregressive neural machi
   title={Latent-Variable Non-Autoregressive Neural Machine Translation with Deterministic Inference using a Delta Posterior},
   author={Raphael Shu and Jason Lee and Hideki Nakayama and Kyunghyun Cho},
   journal={ArXiv},
-  year={2019},
+  year={2019},``
   volume={abs/1908.07181}
 }
 ```
-In this model, we learn a set of continuous latent variables ![z](https://latex.codecogs.com/png.latex?z) to capture the information and intra-word dependencies of the target tokens. Intuitively, if the model is perfectly trained and the target sequence can be fully reconstructed from the latent variables without error, then the translation problem becomes a problem of finding adequate ![z](https://latex.codecogs.com/png.latex?z). This is illustrated in the picture below, which shows the relations among ![x](https://latex.codecogs.com/png.latex?x), ![z](https://latex.codecogs.com/png.latex?z)and ![y](https://latex.codecogs.com/png.latex?y).
+In this model, we learn a set of continuous latent variables ![z](https://latex.codecogs.com/png.latex?z) to capture the information and intra-word dependencies of the target tokens. Intuitively, if the model is perfectly trained and the target sequence can be fully reconstructed from the latent variables without error, then the translation problem becomes a problem of finding adequate ![z](https://latex.codecogs.com/png.latex?z). This is illustrated in the picture below, which shows the relations among ![x](https://latex.codecogs.com/png.latex?x), ![z](https://latex.codecogs.com/png.latex?z) and ![y](https://latex.codecogs.com/png.latex?y).
 
 <p align="center">
 <img src="https://i.imgur.com/qh7sPlB.png" width="400px"/>
@@ -32,7 +32,7 @@ Our model is trained by maximizing the following objective, which is a lower bou
 <p align="center">
 <img src="https://latex.codecogs.com/png.latex?\log%20p(y|x)%20\geq%20\mathbb{E}_{z%20\sim%20q(z|x,y)}%20\Big[\log%20p(y|x,z,l_y)%20+%20\log%20p(l_y|z)\Big]%20-%20\mathrm{KL}\Big(q(z|x,y)||p(z|x)\Big)" />
 </p>
- 
+
 Now for the parameterization, the model is implemented with the architecture in the picture below. Does it appear to be more complicated comparing to a standard Transformer? Well, you are now computing four probabilities instead of only ![p(y|x)](https://latex.codecogs.com/png.latex?p(y|x)). However, as the model is basically reusing the Transformer modules such as self-attention and cross-attention, so it's still pretty easy to implement. 
 
 <p align="center">
@@ -40,7 +40,7 @@ Now for the parameterization, the model is implemented with the architecture in 
 </p>
 
 One thing special about this model is that the number of latent variables is always identical to the source tokens, as you can guess from the first figure in this post. As each ![z_i](https://latex.codecogs.com/png.latex?z_i) is a continuous vector, ![z](https://latex.codecogs.com/png.latex?z)is a ![L_x by D](https://latex.codecogs.com/png.latex?L_x\times%20D) matrix, where ![L_x](https://latex.codecogs.com/png.latex?L_x) is the length of the source sequence, and D is the dimension of latent variables. For the Transformer decoder to predict target tokens that have a length longer or shorter than ![L_x](https://latex.codecogs.com/png.latex?L_x), we need a funtion to adjust the length of latent variables, just like this:
- 
+
 <p align="center">
 <img src="https://latex.codecogs.com/png.latex?\bar%20z%20=%20\mathrm{LengthTransform}(z,L_y)" />
 </p>
