@@ -17,7 +17,8 @@ from nmtlab.modules.transformer_modules import LabelSmoothingKLDivLoss
 from nmtlab.utils import OPTS
 from nmtlab.utils import TensorMap
 
-from lib_lanmt_modules import TransformerCrossEncoder, TransformerEncoder
+from lib_lanmt_modules import TransformerEncoder
+from lib_lanmt_modules import TransformerCrossEncoder
 from lib_lanmt_modules import LengthConverter
 from lib_vae import VAEBottleneck
 
