@@ -24,7 +24,11 @@ In this model, we learn a set of continuous latent variables ![z](https://latex.
 Our model is trained by maximizing the following objective, which is a lower bound of log-likehood. We also  call it a *evidence lower bound* (ELBO). The first part is a reconstruction loss that makes sure you can predict target sequence from ![z](https://latex.codecogs.com/png.latex?z). The second part is a KL divergence, which makes the ![z](https://latex.codecogs.com/png.latex?z) more predictable given the source sequence.
 
 <p align="center">
+<<<<<<< HEAD
 <img src="https://latex.codecogs.com/png.latex?\log%20p(y|x)%20\geq%20\mathbb{E}_{z%20\sim%20q(z|x,y)}%20\Big[\log%20p(y|x,z,l_y)%20+%20\log%20p(l_y|z)\Big]%20-%20\mathrm{KL}\Big(q(z|x,y)||p(z|x)\Big)" />
+=======
+<img src="https://latex.codecogs.com/png.latex?p(y|x)%20\geq%20\mathbb{E}_{z%20\sim%20q(z|x,y)}%20\Big[\log%20p(y|x,z,l_y)%20+%20\log%20p(l_y|z)\Big]%20-%20\mathrm{KL}\Big(q(z|x,y)||p(z|x)\Big)" />
+>>>>>>> 3e8bb8f6fb7e43bb3e53fe28a73c55ac82d4fafe
 </p>
  
 Now for the parameterization, the model is implemented with the architecture in the picture below. Does it appear to be more complicated comparing to a standard Transformer? However, as the model is basically reusing the Transformer modules such as self-attention and cross-attention, so it's still pretty easy to implement. 
