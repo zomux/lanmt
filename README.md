@@ -23,7 +23,7 @@ In this model, we learn a set of continuous latent variables ![z](https://latex.
 
 <p align="center">
 <img src="https://i.imgur.com/qh7sPlB.png" width="400px"/>
-</p>
+</p> 
 
 In paractice, we force the latent variables to have very low dimensions such as 8. Obviously, handling things in a low-dimension countinuous space is easier comparing to a high-dimension discrete space.
 
@@ -39,7 +39,7 @@ Now for the parameterization, the model is implemented with the architecture in 
 <img src="https://i.imgur.com/a3x9tni.png" width="400px"/>
 </p>
 
-One thing special about this model is that the number of latent variables is always identical to the source tokens, as you can guess from the first figure in this post. As each ![z_i](https://latex.codecogs.com/png.latex?z_i) is a continuous vector, ![z](https://latex.codecogs.com/png.latex?z)is a ![L_x by D](https://latex.codecogs.com/png.latex?L_x\times%20D) matrix, where ![L_x](https://latex.codecogs.com/png.latex?L_x) is the length of the source sequence, and D is the dimension of latent variables. For the Transformer decoder to predict target tokens that have a length longer or shorter than ![L_x](https://latex.codecogs.com/png.latex?L_x), we need a funtion to adjust the length of latent variables, just like this:
+One thing special about this model is that the number of latent variables is always identical to the source tokens, as you can guess from the first figure in this post. As each ![z_i](https://latex.codecogs.com/png.latex?z_i) is a continuous vector, ![z](https://latex.codecogs.com/png.latex?z) is a ![L_x by D](https://latex.codecogs.com/png.latex?L_x\times%20D) matrix, where ![L_x](https://latex.codecogs.com/png.latex?L_x) is the length of the source sequence, and D is the dimension of latent variables. For the Transformer decoder to predict target tokens that have a length longer or shorter than ![L_x](https://latex.codecogs.com/png.latex?L_x), we need a funtion to adjust the length of latent variables, just like this:
 
 <p align="center">
 <img src="https://latex.codecogs.com/png.latex?\bar%20z%20=%20\mathrm{LengthTransform}(z,L_y)" />
