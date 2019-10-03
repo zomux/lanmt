@@ -6,7 +6,7 @@ LaNMT: Latent-variable Non-autoregressive Neural Machine Translation with Determ
 ```diff
 - WARNING: Still doing code refactoring, please wait until this message disappears :)
 ```
- 
+
 
 LaNMT implements a latent-variable framework for non-autoregressive neural machine translation. As you can guess from the code, it's has a simple architecture but powerful performance. For the details of this model, you can check our paper on Arxiv https://arxiv.org/abs/1908.07181 . To cite the paper:
 
@@ -19,16 +19,21 @@ LaNMT implements a latent-variable framework for non-autoregressive neural machi
   volume={abs/1908.07181}
 }
 ```
+In this model, we learn a set of continuous latent variables ![z](https://latex.codecogs.com/png.latex?z) to capture the information and intra-word dependencies of the target tokens. Intuitively, if the model is perfectly trained and the target sequence can be fully reconstructed from the latent variables without error, then the translation problem becomes a problem of finding adequate ![z](https://latex.codecogs.com/png.latex?z). In paractice, we force the latent variables to have very low dimensions such as 8. Obviously, handling things in a low-dimension countinuous space is easier comparing to a high-dimension discrete space.
+
+Our model is trained by maximizing the following objective, which is a lower bound of log-likehood. We also  call it a *evidence lower bound* (ELBO). The first part is a reconstruction loss that makes sure you can predict target sequence from ![z](https://latex.codecogs.com/png.latex?z). The second part is a KL divergence, which makes the ![z](https://latex.codecogs.com/png.latex?z) more predictable given the source sequence.
 
 <p align="center">
-<img src="https://latex.codecogs.com/png.latex?p(y|x)%20\geq%20\mathbb{E}_{z%20\sim%20q(z|x,y)}%20\Big[\log%20p(y|x,z,l_y)%20+%20\log%20p(l_y|z)\Big]%20-%20\mathrm{KL}\Big(q(z|x,y)||p(z|x)\Big)" />
+<img src="https://latex.codecogs.com/png.latex?\log%20p(y|x)%20\geq%20\mathbb{E}_{z%20\sim%20q(z|x,y)}%20\Big[\log%20p(y|x,z,l_y)%20+%20\log%20p(l_y|z)\Big]%20-%20\mathrm{KL}\Big(q(z|x,y)||p(z|x)\Big)" />
 </p>
+ 
+Now for the parameterization, the model is implemented with the architecture in the picture below. Does it appear to be more complicated comparing to a standard Transformer? However, as the model is basically reusing the Transformer modules such as self-attention and cross-attention, so it's still pretty easy to implement. 
 
 <p align="center">
 <img src="https://i.imgur.com/a3x9tni.png" width="400px"/>
 </p>
 
-
+One thing special about this model is that the number of latent variables is always identical to the source tokens.
 
 
 
