@@ -42,10 +42,10 @@ Now for the parameterization, the model is implemented with the architecture in 
 One thing special about this model is that the number of latent variables is always identical to the source tokens, as you can guess from the first figure in this post. As each ![z_i](https://latex.codecogs.com/png.latex?\fn_cs%20z_i) is a continuous vector, ![z](https://latex.codecogs.com/png.latex?\fn_cs%20z) is a ![L_x by D](https://latex.codecogs.com/png.latex?\fn_cs%20L_x\times%20D) matrix, where ![L_x](https://latex.codecogs.com/png.latex?\fn_cs%20L_x) is the length of the source sequence, and D is the dimension of latent variables. For the Transformer decoder to predict target tokens that have a length longer or shorter than ![L_x](https://latex.codecogs.com/png.latex?\fn_cs%20L_x), we need a funtion to adjust the length of latent variables, just like this:
 
 <p align="center">
-<img src="https://latex.codecogs.com/png.latex?\fn_cs%20\bar%20z%20=%20\mathrm{LengthTransform}(z,L_y)" />
+<img src="https://latex.codecogs.com/png.latex?\fn_cs%20z^\prime%20=%20\mathrm{LengthTransform}(z,L_y)" />
 </p>
 
-As a result, ![z bar](https://latex.codecogs.com/png.latex?\fn_cs%20\bar%20z) will be a ![L_y by D](https://latex.codecogs.com/png.latex?\fn_cs%20L_y\times%20D) matrix. The implementation of this length transforming function can be found in [TBD]. 
+As a result, ![z'](https://latex.codecogs.com/png.latex?\fn_cs%20z^\prime) will be a ![L_y by D](https://latex.codecogs.com/png.latex?\fn_cs%20L_y\times%20D) matrix. The implementation of this length transforming function can be found in [TBD]. 
 
 ## Install Package Dependency
 
