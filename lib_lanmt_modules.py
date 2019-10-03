@@ -8,7 +8,7 @@ from __future__ import print_function
 import math
 import torch
 import torch.nn as nn
-from nmtlab.modules.transformer_modules import TransformerEmbedding, TransformerEncoderLayer, TransformerFeedForward, MultiHeadAttention, residual_connect
+from nmtlab.modules.transformer_modules import TransformerEncoderLayer, TransformerFeedForward, MultiHeadAttention, residual_connect
 
 
 class TransformerEncoder(nn.Module):

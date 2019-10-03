@@ -1,0 +1,1 @@
+LaNMT: Latent-variable Non-autoregressive Neural Machine Translation with Deterministic Inference
