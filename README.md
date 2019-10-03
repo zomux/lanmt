@@ -26,8 +26,8 @@ Our model is trained by maximizing the following objective, which is a lower bou
 <p align="center">
 <img src="https://latex.codecogs.com/png.latex?\log%20p(y|x)%20\geq%20\mathbb{E}_{z%20\sim%20q(z|x,y)}%20\Big[\log%20p(y|x,z,l_y)%20+%20\log%20p(l_y|z)\Big]%20-%20\mathrm{KL}\Big(q(z|x,y)||p(z|x)\Big)" />
 </p>
- 
-Now for the parameterization, the model is implemented with the architecture in the picture below. Does it appear to be more complicated comparing to a standard Transformer? However, as the model is basically reusing the Transformer modules such as self-attention and cross-attention, so it's still pretty easy to implement. 
+
+Now for the parameterization, the model is implemented with the architecture in the picture below. Does it appear to be more complicated comparing to a standard Transformer? Well, you are now computing four probabilities instead of only ![p(y|x)](https://latex.codecogs.com/png.latex?p(y|x)). However, as the model is basically reusing the Transformer modules such as self-attention and cross-attention, so it's still pretty easy to implement. 
 
 <p align="center">
 <img src="https://i.imgur.com/a3x9tni.png" width="400px"/>
