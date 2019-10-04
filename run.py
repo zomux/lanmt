@@ -145,7 +145,7 @@ lanmt_options.update(dict(
 nmt = LANMTModel(**lanmt_options)
 
 # Training
-if OPTS.train or OPTS.all: 
+if OPTS.train or OPTS.all:
     # Training code
     if OPTS.finetune:
         n_valid_per_epoch = 20
