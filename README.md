@@ -46,7 +46,7 @@ Now for the parameterization, the model is implemented with the architecture in 
 </p>
 
 One thing special about this model is that the number of latent variables is always identical to the source tokens, as you can guess from the second figure in this post. As each ![z_i](https://latex.codecogs.com/png.latex?\fn_cs%20z_i) is a continuous vector, ![z](https://latex.codecogs.com/png.latex?\fn_cs%20z) is a ![L_x by D](https://latex.codecogs.com/png.latex?\fn_cs%20L_x\times%20D) matrix, where ![L_x](https://latex.codecogs.com/png.latex?\fn_cs%20L_x) is the length of the source sequence, and D is the dimension of latent variables. For the Transformer decoder to predict target tokens that have a length longer or shorter than ![L_x](https://latex.codecogs.com/png.latex?\fn_cs%20L_x), we need a funtion to adjust the length of latent variables, just like this:
- 
+
 <p align="center">
 <img src="https://latex.codecogs.com/png.latex?\fn_cs%20z^\prime%20=%20\mathrm{LengthTransform}(z,L_y)" />
 </p>
@@ -60,7 +60,7 @@ The code depends on PyTorch, **torchtext** for data loading,
 
 Note that although you can train the model on a single GPU, but for a large dataset such as WMT14, the training takes a lot of time without multi-gpu support. We recommend you to get 4 ~ 8 GPUs for this task.
 
-We recommend installing with conda.
+We recommend installing with conda. 
 
 -1. (If you don't have conda) Download and Install Miniconda for Python 3
 
@@ -239,7 +239,7 @@ BLEU = 25.166677019716257
 
 ## Use our pre-trained models
 
-If you just want to test out the model and check the decoding speed and quality of translations, you can also download our pre-trained models. By running the script with these models, you will get the exactly same BLEU scores as we reported in the paper.
+If you just want to test out the model and check the decoding speed and quality of translations, you can download our pre-trained models. By running the script with these models, you will get the exactly same BLEU scores as we reported in the paper.
 
 -1. Download the pre-trained models (1GB)
 
