@@ -122,7 +122,7 @@ class LengthConverter(nn.Module):
         """
         Adjust the number of vectors in `z` according to `ls`.
         Return the new `z` and its mask.
-        Args
+        Args:
             z - latent variables, shape: B x L_x x hidden
             ls - target lengths, shape: B
             z_mask - latent mask, shape: B x L_x
