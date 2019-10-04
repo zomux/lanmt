@@ -8,11 +8,15 @@ from __future__ import print_function
 import math
 import torch
 import torch.nn as nn
-from nmtlab.modules.transformer_modules import TransformerEncoderLayer, TransformerFeedForward, MultiHeadAttention, residual_connect
+from nmtlab.modules.transformer_modules import TransformerEncoderLayer
+from nmtlab.modules.transformer_modules import TransformerFeedForward
+from nmtlab.modules.transformer_modules import MultiHeadAttention
+from nmtlab.modules.transformer_modules import residual_connect
 
 
 class TransformerEncoder(nn.Module):
-    """ Self-attention -> FF -> layer norm
+    """
+    Self-attention -> FF -> layer norm
     """
 
     def __init__(self, embed_layer, size, n_layers, ff_size=None, n_att_head=8, dropout_ratio=0.1, skip_connect=False):
@@ -37,7 +41,7 @@ class TransformerEncoder(nn.Module):
             x = layer(x, mask)
             if self.skip_connect:
                 x = self._rescale * (first_x + x)
-        x= self.layer_norm(x)
+        x = self.layer_norm(x)
         return x
 
 
@@ -75,7 +79,8 @@ class TransformerCrossEncoderLayer(nn.Module):
 
 
 class TransformerCrossEncoder(nn.Module):
-    """ Self-attention -> cross-attenion -> FF -> layer norm
+    """
+    Self-attention -> cross-attenion -> FF -> layer norm
     """
 
     def __init__(self, embed_layer, size, n_layers, ff_size=None, n_att_head=8, dropout_ratio=0.1, skip_connect=False):
@@ -105,6 +110,9 @@ class TransformerCrossEncoder(nn.Module):
 
 
 class LengthConverter(nn.Module):
+    """
+    Implementation of Length Transformation.
+    """
 
     def __init__(self):
         super(LengthConverter, self).__init__()
@@ -112,9 +120,12 @@ class LengthConverter(nn.Module):
 
     def forward(self, z, ls, z_mask):
         """
-        z - B x L(x) x hidden
-        ls - B
-        z_mask - B x L(x)
+        Adjust the number of vectors in `z` according to `ls`.
+        Return the new `z` and its mask.
+        Args
+            z - latent variables, shape: B x L_x x hidden
+            ls - target lengths, shape: B
+            z_mask - latent mask, shape: B x L_x
         """
         n = z_mask.sum(1)
         arange_l = torch.arange(ls.max().long())

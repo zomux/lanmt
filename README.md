@@ -2,12 +2,6 @@ LaNMT: Latent-variable Non-autoregressive Neural Machine Translation with Determ
 ===
 
 
-
-```diff
-- WARNING: Still doing code refactoring, please wait until this message disappears :)
-```
-
-
 LaNMT implements a latent-variable framework for non-autoregressive neural machine translation. As you can guess from the code, it's has a simple architecture but powerful performance. For the details of this model, you can check our paper on Arxiv https://arxiv.org/abs/1908.07181 . To cite the paper:
 
 ```
@@ -19,7 +13,19 @@ LaNMT implements a latent-variable framework for non-autoregressive neural machi
   volume={abs/1908.07181}
 }
 ```
-In this model, we learn a set of continuous latent variables ![z](https://latex.codecogs.com/png.latex?\fn_cs%20z) to capture the information and intra-word dependencies of the target tokens. Intuitively, if the model is perfectly trained and the target sequence can be fully reconstructed from the latent variables without error, then the translation problem becomes a problem of finding adequate ![z](https://latex.codecogs.com/png.latex?\fn_cs%20z). This is illustrated in the picture below, which shows the relations among ![x](https://latex.codecogs.com/png.latex?\fn_cs%20x), ![z](https://latex.codecogs.com/png.latex?\fn_cs%20z) and ![y](https://latex.codecogs.com/png.latex?\fn_cs%20y).
+#### What is non-autoregressive neural machine translation?
+
+In conventional neural machine translation modes, the decoder side is a language model. That means the model generate a single word in each time step. So you have to compute the neural network by ![N](https://latex.codecogs.com/png.latex?\fn_cs%20N) times in order to get a translation of ![N](https://latex.codecogs.com/png.latex?\fn_cs%20N) words. See the illustration below:
+
+<p align="center">
+<img src="https://i.imgur.com/0JZPqFH.png" width="800px"/>
+</p> 
+
+Such models can't fully exploit the parallelizability of GPU as you have to wait preceeding words to be generated to find the next word. In constrast, non-autoregressive models generate all target words in just one run of neural computation. As all target tokens are predicted simutaneously, the translation speed can be much faster.
+
+#### Our model
+
+We learn a set of continuous latent variables ![z](https://latex.codecogs.com/png.latex?\fn_cs%20z) to capture the information and intra-word dependencies of the target tokens. Intuitively, if the model is perfectly trained and the target sequence can be fully reconstructed from the latent variables without error, then the translation problem becomes a problem of finding adequate ![z](https://latex.codecogs.com/png.latex?\fn_cs%20z). This is illustrated in the picture below, which shows the relations among ![x](https://latex.codecogs.com/png.latex?\fn_cs%20x), ![z](https://latex.codecogs.com/png.latex?\fn_cs%20z) and ![y](https://latex.codecogs.com/png.latex?\fn_cs%20y).
 
 <p align="center">
 <img src="https://i.imgur.com/qh7sPlB.png" width="400px"/>
@@ -45,7 +51,7 @@ One thing special about this model is that the number of latent variables is alw
 <img src="https://latex.codecogs.com/png.latex?\fn_cs%20z^\prime%20=%20\mathrm{LengthTransform}(z,L_y)" />
 </p>
 
-As a result, ![z'](https://latex.codecogs.com/png.latex?\fn_cs%20z^\prime) will be a ![L_y by D](https://latex.codecogs.com/png.latex?\fn_cs%20L_y\times%20D) matrix. The implementation of this length transforming function can be found in [TBD]. 
+As a result, ![z'](https://latex.codecogs.com/png.latex?\fn_cs%20z^\prime) will be a ![L_y by D](https://latex.codecogs.com/png.latex?\fn_cs%20L_y\times%20D) matrix. The implementation of this length transforming function can be found in `lib_lanmt_modules.py` (class LengthConverter) . 
 
 ## Install Package Dependency
 
@@ -163,7 +169,7 @@ nde --opt_batchtokens 4096 --opt_distill --opt_annealbudget --train
 horovodrun -np 8 -H localhost:8 python run.py --opt_dtok wmt14_e
 nde --opt_batchtokens 8192 --opt_distill --opt_annealbudget --train
 ```
-
+ 
 There are some options you can use for training the model:
 
 ``--opt_batchtokens`` specifies the number of tokens in a batch
@@ -171,7 +177,7 @@ There are some options you can use for training the model:
 ``--opt_distill`` enabling knowledge distillation, which means the model will predict the output of a teacher Transformer
 
 ``--opt_annealbudget`` enabling annealing of the budget of KL divergence
- 
+
 In our experiments, we train the model with 8 GPUs, putting 8192 tokens in each batch. If the script is successfully launched, you will see outputs like this:
 
 ```
@@ -278,5 +284,5 @@ python run.py --opt_dtok aspec_jaen --use_pretrain --opt_Trefine_steps 1 --opt_T
 |                 | `--use_pretrain`                                             | 25.28 | 21ms / 4              | 19.7x   |
 |                 | `--use_pretrain --opt_Trefine_steps 1`                       | 27.53 | 47ms / 8              | 8.8x    |
 |                 | `--use_pretrain --opt_Trefine_steps 1 --opt_Tlatent_search`  | 28.08 | 69ms / 18             | 6.0x    |
-|                 | `--use_pretrain --opt_Trefine_steps 1 --opt_Tlatent_search --opt_Tteacher_rescore` | 28.26 | 99ms / 23             | 4.2x    |
+|                 | `--use_pretrain --opt_Trefine_steps 1 --opt_Tlatent_search --opt_Tteacher_rescore` | 28.26 | 93ms / 23             | 4.5x    |
 
