@@ -154,7 +154,7 @@ if OPTS.train or OPTS.all:
     # Training code
     if OPTS.finetune:
         n_valid_per_epoch = 20
-        scheduler = SimpleScheduler(max_epoch=3)
+        scheduler = SimpleScheduler(max_epoch=1)
     else:
         scheduler = TransformerScheduler(warm_steps=training_warmsteps, max_steps=training_maxsteps)
     optimizer = optim.Adam(nmt.parameters(), lr=0.0001, betas=(0.9, 0.98))
