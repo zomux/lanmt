@@ -154,6 +154,7 @@ nde --opt_batchtokens 8192 --opt_distill --opt_annealbudget --train
 ```
 
 -2. (Multi-GPU) Run this command if you have 8 GPUs:
+
 ```
 # If you have 16GB GPU memory
 horovodrun -np 8 -H localhost:8 python run.py --opt_dtok wmt14_e
@@ -170,7 +171,7 @@ There are some options you can use for training the model:
 ``--opt_distill`` enabling knowledge distillation, which means the model will predict the output of a teacher Transformer
 
 ``--opt_annealbudget`` enabling annealing of the budget of KL divergence
-
+ 
 In our experiments, we train the model with 8 GPUs, putting 8192 tokens in each batch. If the script is successfully launched, you will see outputs like this:
 
 ```
@@ -206,13 +207,13 @@ python run.py --opt_dtok wmt14_e
 nde --opt_batchtokens 8192 --opt_distill --opt_annealbudget --opt_finetune --test --evaluate
 ```
 
-Then, let's try to refine the latent variables with deterministic inference for only one step
+You will see the decoding time and evaluated BLEU scores at the end of lines. Then, let's try to refine the latent variables with deterministic inference for only one step
 
 ```
 python run.py --opt_dtok wmt14_e
 nde --opt_batchtokens 8192 --opt_distill --opt_annealbudget --opt_finetune --opt_Trefine_steps 1 --test --evaluate
 ```
- 
+
 We can also sample multiple latent variables from the prior, getting multiple candidate translations then use an autoregressive Transformer model to rescore them, you can do this by running
 
 ```
