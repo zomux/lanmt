@@ -39,7 +39,6 @@ ap = ArgumentParser()
 ap.add_argument("--resume", action="store_true")
 ap.add_argument("--test", action="store_true")
 ap.add_argument("--train", action="store_true")
-ap.add_argument("--measure_elbo", action="store_true")
 ap.add_argument("--evaluate", action="store_true")
 ap.add_argument("--all", action="store_true")
 ap.add_argument("--use_pretrain", action="store_true", help="use pretrained model trained by Raphael Shu")
@@ -203,7 +202,6 @@ if OPTS.test or OPTS.all:
     src_vocab = Vocab(src_vocab_path)
     tgt_vocab = Vocab(tgt_vocab_path)
     result_path = OPTS.result_path
-    elbo_map = defaultdict(list)
     # Read data
     lines = open(test_src_corpus).readlines()
     tgt_lines = open(test_tgt_corpus).readlines()
@@ -221,10 +219,6 @@ if OPTS.test or OPTS.all:
                 # Predict latent and target words from prior
                 targets, _, prior_states = nmt.translate(x)
                 target_tokens = targets.cpu().numpy()[0].tolist()
-                if OPTS.measure_elbo:
-                    # Record EBLO
-                    elbo = nmt.measure_ELBO(x, targets)
-                    elbo_map[-1].append(elbo.cpu().numpy())
                 # Interative inference
                 for infer_step in range(OPTS.Trefine_steps):
                     # Sample latent from Q and draw a new target prediction
@@ -233,12 +227,8 @@ if OPTS.test or OPTS.all:
                     targets, _, _ = nmt.translate(x, latent=new_latent, prior_states=prior_states,
                                                   refine_step=infer_step + 1)
                     target_tokens = targets[0].cpu().numpy().tolist()
-                    if OPTS.measure_elbo:
-                        # Record EBLO
-                        elbo = nmt.measure_ELBO(x, targets)
-                        elbo_map[infer_step].append(elbo.cpu().numpy())
                     # Early stopping
-                    if tuple(target_tokens) == tuple(prev_target) and not OPTS.measure_elbo:
+                    if tuple(target_tokens) == tuple(prev_target):
                         break
             if targets is None:
                 target_tokens = [2, 2, 2]
@@ -257,11 +247,6 @@ if OPTS.test or OPTS.all:
             sys.stdout.flush()
     sys.stdout.write("\n")
     print("Average decoding time: {:.0f}ms, std: {:.0f}".format(np.mean(decode_times), np.std(decode_times)))
-    if OPTS.measure_elbo:
-        for k in elbo_map:
-            print("elbomap", k, len(elbo_map[k]), "std=", np.std(elbo_map[k]))
-            elbo_map[k] = np.mean(elbo_map[k])
-        print(elbo_map)
 
 # Evaluation of translaton quality
 if OPTS.evaluate or OPTS.all:

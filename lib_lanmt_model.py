@@ -311,27 +311,3 @@ class LANMTModel(Transformer):
 
         return pred, latent, prior_states
 
-    def measure_ELBO(self, x, y):
-        """Measure the ELBO in the inference time.
-        """
-        x_mask = torch.ne(x, 0).float()
-        y_mask = torch.ne(y, 0).float()
-        # Compute p(z|x)
-        xz_states = self.xz_encoders[0](x, x_mask)
-        xz_prob = self.xz_softmax[0](xz_states)
-        # Compute p(z|y,x) and sample z
-        yz_states = self.compute_Q_states(self.x_embed_layer(x), x_mask, y, y_mask)
-        # Sampling for 20 times
-        likelihood_list = []
-        for _ in range(20):
-            z, yz_prob = self.sample_from_Q(yz_states)
-            z_pad = self.convert_length(self, z, x_mask, y_mask.sum(-1))
-            decoder_states = self.decoder(z_pad, y_mask, xz_states, x_mask)
-            logits = self.expander_nn(decoder_states)
-            likelihood = - F.cross_entropy(logits[0], y[0], reduction="sum")
-            likelihood_list.append(likelihood)
-        kl = self.compute_vae_KL(xz_prob, yz_prob).sum()
-        mean_likelihood = sum(likelihood_list) / len(likelihood_list)
-        elbo = mean_likelihood - kl
-        return elbo
-
