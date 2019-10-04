@@ -43,8 +43,6 @@ class VAEBottleneck(nn.Module):
             return mu
         else:
             var = F.softplus(dist[:, :, self.z_size:])
-            if OPTS.fixgaus:
-                var = var ** 2
             noise = mu.clone()
             if samples > 1:
                 if noise.shape[0] == 1:
