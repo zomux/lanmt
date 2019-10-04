@@ -39,13 +39,13 @@ Our model is trained by maximizing the following objective, which is a lower bou
 <img src="https://latex.codecogs.com/png.latex?\fn_cs%20\log%20p(y|x)%20\geq%20\mathbb{E}_{z%20\sim%20q(z|x,y)}%20\Big[\log%20p(y|x,z,l_y)%20+%20\log%20p(l_y|z)\Big]%20-%20\mathrm{KL}\Big(q(z|x,y)||p(z|x)\Big)" />
 </p>
 
-Now for the parameterization, the model is implemented with the architecture in the picture below. Does it appear to be more complicated comparing to a standard Transformer? Well, you are now computing four probabilities instead of only ![p(y|x)](https://latex.codecogs.com/png.latex?\fn_cs%20p(y|x)). However, as the model is basically reusing the Transformer modules such as self-attention and cross-attention, so it's still pretty easy to implement. 
+Now for the parameterization, the model is implemented with the architecture in the picture below. Does it appear to be more complicated comparing to a standard Transformer? Well, you are now computing four probabilities instead of only ![p(y|x)](https://latex.codecogs.com/png.latex?\fn_cs%20p(y|x)). However, as the model is basically reusing the Transformer modules such as self-attention and cross-attention, it's still pretty easy to implement. 
 
 <p align="center">
 <img src="https://i.imgur.com/a3x9tni.png" width="400px"/>
 </p>
 
-One thing special about this model is that the number of latent variables is always identical to the source tokens, as you can guess from the first figure in this post. As each ![z_i](https://latex.codecogs.com/png.latex?\fn_cs%20z_i) is a continuous vector, ![z](https://latex.codecogs.com/png.latex?\fn_cs%20z) is a ![L_x by D](https://latex.codecogs.com/png.latex?\fn_cs%20L_x\times%20D) matrix, where ![L_x](https://latex.codecogs.com/png.latex?\fn_cs%20L_x) is the length of the source sequence, and D is the dimension of latent variables. For the Transformer decoder to predict target tokens that have a length longer or shorter than ![L_x](https://latex.codecogs.com/png.latex?\fn_cs%20L_x), we need a funtion to adjust the length of latent variables, just like this:
+One thing special about this model is that the number of latent variables is always identical to the source tokens, as you can guess from the second figure in this post. As each ![z_i](https://latex.codecogs.com/png.latex?\fn_cs%20z_i) is a continuous vector, ![z](https://latex.codecogs.com/png.latex?\fn_cs%20z) is a ![L_x by D](https://latex.codecogs.com/png.latex?\fn_cs%20L_x\times%20D) matrix, where ![L_x](https://latex.codecogs.com/png.latex?\fn_cs%20L_x) is the length of the source sequence, and D is the dimension of latent variables. For the Transformer decoder to predict target tokens that have a length longer or shorter than ![L_x](https://latex.codecogs.com/png.latex?\fn_cs%20L_x), we need a funtion to adjust the length of latent variables, just like this:
 
 <p align="center">
 <img src="https://latex.codecogs.com/png.latex?\fn_cs%20z^\prime%20=%20\mathrm{LengthTransform}(z,L_y)" />
@@ -171,6 +171,7 @@ nde --opt_batchtokens 4096 --opt_distill --opt_annealbudget --train
 horovodrun -np 8 -H localhost:8 python run.py --opt_dtok wmt14_e
 nde --opt_batchtokens 8192 --opt_distill --opt_annealbudget --train
 ```
+
 
 There are some options you can use for training the model:
 

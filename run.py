@@ -145,10 +145,6 @@ lanmt_options.update(dict(
 
 nmt = LANMTModel(**lanmt_options)
 
-# Load the autoregressive model for rescoring if neccessary
-if OPTS.Tteacher_rescore:
-    load_rescoring_transformer(basic_options, pretrained_autoregressive_path)
-
 # Training
 if OPTS.train or OPTS.all:
     # Training code
@@ -184,13 +180,17 @@ if OPTS.test or OPTS.all:
     if not is_root_node():
         sys.exit()
     torch.manual_seed(OPTS.seed)
+    # Load the autoregressive model for rescoring if neccessary
+    if OPTS.Tteacher_rescore:
+        assert os.path.exists(pretrained_autoregressive_path)
+        load_rescoring_transformer(basic_options, pretrained_autoregressive_path)
     # Load trained model
     if OPTS.use_pretrain:
         if OPTS.dtok not in PRETRAINED_MODEL_MAP:
             print("The model for {} doesn't exist".format(OPTS.dtok))
         model_path = PRETRAINED_MODEL_MAP[OPTS.dtok]
         print("loading pretrained model in {}".format(model_path))
-        OPTS.result_path = OPTS.result_path.replace("lanmt", "lanmt_pretrain")
+        OPTS.result_path = OPTS.result_path.replace("lanmt_", "lanmt_pretrain_")
     else:
         model_path = OPTS.model_path
     if not os.path.exists(model_path):
@@ -253,7 +253,7 @@ if OPTS.test or OPTS.all:
             target_words = tgt_vocab.decode(target_tokens)
             target_sent = " ".join(target_words)
             outf.write(target_sent + "\n")
-            sys.stdout.write(".")
+            sys.stdout.write("\rtranslating: {:.1f}%  ".format(float(i) * 100 / len(lines)))
             sys.stdout.flush()
     sys.stdout.write("\n")
     print("Average decoding time: {:.0f}ms, std: {:.0f}".format(np.mean(decode_times), np.std(decode_times)))
