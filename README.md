@@ -46,7 +46,7 @@ Now for the parameterization, the model is implemented with the architecture in 
 </p>
 
 One thing special about this model is that the number of latent variables is always identical to the source tokens, as you can guess from the second figure in this post. As each ![z_i](https://latex.codecogs.com/png.latex?\fn_cs%20z_i) is a continuous vector, ![z](https://latex.codecogs.com/png.latex?\fn_cs%20z) is a ![L_x by D](https://latex.codecogs.com/png.latex?\fn_cs%20L_x\times%20D) matrix, where ![L_x](https://latex.codecogs.com/png.latex?\fn_cs%20L_x) is the length of the source sequence, and D is the dimension of latent variables. For the Transformer decoder to predict target tokens that have a length longer or shorter than ![L_x](https://latex.codecogs.com/png.latex?\fn_cs%20L_x), we need a funtion to adjust the length of latent variables, just like this:
-
+ 
 <p align="center">
 <img src="https://latex.codecogs.com/png.latex?\fn_cs%20z^\prime%20=%20\mathrm{LengthTransform}(z,L_y)" />
 </p>
@@ -246,7 +246,7 @@ If you just want to test out the model and check the decoding speed and quality 
 ```
 cd mydata
 ./gdown.pl https://drive.google.com/file/d/1DcTHZYuhJhxxh0153qRx6BkBNHDK_f3b/view lanmt_pretrained_models.tgz
-tar xzvf lanmt_pretrained_models
+tar xzvf lanmt_pretrained_models.tgz
 cd ..
 ```
 
@@ -289,3 +289,10 @@ python run.py --opt_dtok aspec_jaen --use_pretrain --opt_Trefine_steps 1 --opt_T
 |                 | `--use_pretrain --opt_Trefine_steps 1 --opt_Tlatent_search`  | 28.08 | 69ms / 18             | 6.0x    |
 |                 | `--use_pretrain --opt_Trefine_steps 1 --opt_Tlatent_search --opt_Tteacher_rescore` | 28.26 | 93ms / 23             | 4.5x    |
 
+
+
+## Troubleshooting
+
+1. Training is slow
+
+> Try to install horovod with nccl support. Training will be much faster will nccl for gradient synchronization.
