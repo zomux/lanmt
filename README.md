@@ -145,7 +145,9 @@ tar xzvf lanmt_teacher_models.tgz
 
 
 
-## Train the model
+## Model Training
+
+Here, we start to train the non-autoregressive model. Note that if you don't have time and just want to play with pre-trained model, please jump to https://github.com/zomux/lanmt#use-our-pre-trained-models .
 
 -1. Go back to `lanmt` folder
 
@@ -169,7 +171,7 @@ nde --opt_batchtokens 4096 --opt_distill --opt_annealbudget --train
 horovodrun -np 8 -H localhost:8 python run.py --opt_dtok wmt14_e
 nde --opt_batchtokens 8192 --opt_distill --opt_annealbudget --train
 ```
- 
+
 There are some options you can use for training the model:
 
 ``--opt_batchtokens`` specifies the number of tokens in a batch
