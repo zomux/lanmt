@@ -103,7 +103,7 @@ git clone https://github.com/zomux/lanmt
 cd lanmt
 ```
 
-## Download pre-processed WMT14 dataset
+## Download pre-processed WMT14 dataset and teacher Transformer models
 
 We pre-processed the WMT14 dataset with *sentencepiece* and make the vocabulary size 32k for both source and target sides. For knowledge distllation, we use a baseline Transformer model to generate translations for the whole dataset. To save time, you can just download the pre-processed dataset from our link.
 
@@ -114,13 +114,30 @@ mkdir mydata
 cd mydata
 ```
 
--2. Download pre-processed WMT14 dataset from https://drive.google.com/file/d/16w3ZmxbiRzRG8vtBh26am-GUldHYYvLv/view .
-After download, uncompress the dataset in side `mydata` folder.
+-2. Download pre-processed WMT14 dataset from https://drive.google.com/file/d/16w3ZmxbiRzRG8vtBh26am-GUldHYYvLv/view . After download, uncompress the dataset in side `mydata` folder.
 
 ```
 ./gdown.pl https://drive.google.com/file/d/16w3ZmxbiRzRG8vtBh26am-GUldHYYvLv/view lanmt_wmt14.tgz
 tar xzvf lanmt_wmt14.tgz
 ```
+
+-3. (Option) Download pre-processed ASPEC Ja-En dataset. Due to copyright issue, we only provide test dataset and extracted vocabularies
+
+```
+./gdown.pl https://drive.google.com/file/d/1PhjJS1-NycqbW-LRSLiAZLVvZ00Xh5GW/view lanmt_aspec.tgz
+tar xzvf lanmt_aspec.tgz
+```
+
+
+
+-4. Download teacher Transformer models (735MB) for rescoring candidate translations when performing latent search.
+
+```
+./gdown.pl https://drive.google.com/file/d/1xB81cmSQ7l66zZjWPEBhoc4nzjgFSWZW/view lanmt_teacher_models.tgz
+tar xzvf lanmt_teacher_models.tgz
+```
+
+
 
 ## Train the model
 
@@ -157,17 +174,27 @@ There are some options you can use for training the model:
 In our experiments, we train the model with 8 GPUs, putting 8192 tokens in each batch. If the script is successfully launched, you will see outputs like this:
 
 ```
-[nmtlab] Training TreeAutoEncoder with 74 parameters
-[nmtlab] with Adagrad and SimpleScheduler
-[nmtlab] Training data has 773 batches
 [nmtlab] Running with 8 GPUs (Tesla V100-SXM2-32GB)
-[valid] loss=6.62 label_accuracy=0.00 * (epoch 1, step 1)
-[valid] loss=1.43 label_accuracy=0.54 * (epoch 1, step 194)
+[valid] len_loss=2.77 len_acc=0.12 loss=194.92 word_acc=0.16 KL_budget=1.00
+kl=27.87 tok_kl=1.00 nll=164.28 * (epoch 1, step 471)
 ...
-[nmtlab] Ending epoch 1, spent 2 minutes
+[valid] len_loss=1.57 len_acc=0.40 loss=69.53 word_acc=0.66 KL_budget=1.00 k
+l=28.41 tok_kl=1.02 nll=39.55 * (epoch 1, step 3761)
+[nmtlab] Ending epoch 1, spent 53 minutes
 ...
-[valid] loss=0.47 label_accuracy=0.86 * (epoch 12, step 14687)
-...
+```
+
+In the training log, `loss` showes the total loss value, `nll` shows the cross-entropy value, `kl` shows the KL divergence, `tok_kl` shows the average KL value for each token and `len_loss` and `len_acc` shows the loss and prediction accuracy of the length predictor.
+
+After finishing the model training, we also find it helpful to fix the KL budget at zero, and finetune the model for only one epoch. You can do this by running
+
+```
+# Single GPU
+python run.py --opt_dtok wmt14_e
+nde --opt_batchtokens 4092 --opt_distill --opt_annealbudget --opt_finetune --train
+# Multi-GPU
+horovodrun -np 8 -H localhost:8 python run.py --opt_dtok wmt14_e
+nde --opt_batchtokens 4096 --opt_distill --opt_annealbudget --opt_finetune --train
 ```
 
 ## Inference
@@ -176,36 +203,68 @@ To generate translations and measure the decoding time, simply run
 
 ```
 python run.py --opt_dtok wmt14_e
-nde --opt_batchtokens 8192 --opt_distill --opt_annealbudget --test
+nde --opt_batchtokens 8192 --opt_distill --opt_annealbudget --opt_finetune --test --evaluate
 ```
-
-
 
 Then, let's try to refine the latent variables with deterministic inference for only one step
 
 ```
 python run.py --opt_dtok wmt14_e
-nde --opt_batchtokens 8192 --opt_distill --opt_annealbudget --test --opt_Trefine_steps 1
+nde --opt_batchtokens 8192 --opt_distill --opt_annealbudget --opt_finetune --opt_Trefine_steps 1 --test --evaluate
 ```
-
-
-
-We can also sample multiple latent variables from the prior, getting multiple candidate translations then use an autoregressive Transformer model to rescore them, you can do this by
+ 
+We can also sample multiple latent variables from the prior, getting multiple candidate translations then use an autoregressive Transformer model to rescore them, you can do this by running
 
 ```
 python run.py --opt_dtok wmt14_e
-nde --opt_batchtokens 8192 --opt_distill --opt_annealbudget --test --opt_Trefine_steps 1 --opt_Tlatent_search --opt_Tteacher_rescore
+nde --opt_batchtokens 8192 --opt_distill --opt_annealbudget --opt_finetune --opt_Trefine_steps 1 --opt_Tlatent_search --opt_Tteacher_rescore --test --evaluate
+```
+
+With the `--evaluate` option, the script will evalaute the BLEU scores with sacrebleu. Once the script finishes you shall see the decoding time and BLEU scores like this
+
+```
+Average decoding time: 89ms, std: 22
+BLEU = 25.166677019716257
+```
+
+## Use our pre-trained models
+
+If you just want to test out the model and check the decoding speed and quality of translations, you can also download our pre-trained models. By running the script with these models, you will get the exactly same BLEU scores as we reported in the paper.
+
+-1. Download the pre-trained models (1GB)
+
+```
+cd mydata
+./gdown.pl https://drive.google.com/file/d/1DcTHZYuhJhxxh0153qRx6BkBNHDK_f3b/view lanmt_pretrained_models.tgz
+tar xzvf lanmt_pretrained_models
+cd ..
 ```
 
 
 
-## Use our pre-tained models
+-2. Translate using pre-trained models
+
+```
+# With one refinement step
+python run.py --opt_dtok wmt14_ende --use_pretrain --opt_Trefine_steps 1 --test --evaluate
+# With latent search and teacher rescoring
+python run.py --opt_dtok wmt14_ende --use_pretrain --opt_Trefine_steps 1 --opt_Tlatent_search --opt_Tteacher_rescore --test --evaluate
+```
+
+
+
+-3. (Option) Evaluate the pre-trained model on ASPEC Ja-En dataset
+
+```
+# With one refinement step
+python run.py --opt_dtok aspec_jaen --use_pretrain --opt_Trefine_steps 1 --test --evaluate
+# With latent search and teacher rescoring
+python run.py --opt_dtok aspec_jaen --use_pretrain --opt_Trefine_steps 1 --opt_Tlatent_search --opt_Tteacher_rescore --test --evaluate
+```
 
 
 
 ## Summary of  results
- 
-
 
 | Dataset         | Options                                                      | BLEU  | Decode Time (avg/std) | Speedup |
 | --------------- | ------------------------------------------------------------ | ----- | --------------------- | ------- |
