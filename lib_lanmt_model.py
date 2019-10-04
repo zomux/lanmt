@@ -143,16 +143,15 @@ class LANMTModel(Transformer):
         kl = kl.sum(-1)
         return kl
 
-    def convert_length(self, z, z_mask, y_mask):
-        """Adjust the number of latent variables according to masks.
+    def convert_length(self, z, z_mask, target_lens):
+        """Adjust the number of latent variables.
         """
         rc = 1. / math.sqrt(2)
-        lens = y_mask.sum(-1)
-        converted_vectors, _ = self.length_converter(z, lens, z_mask)
+        converted_vectors, _ = self.length_converter(z, target_lens, z_mask)
         pos_embed = self.pos_embed_layer(converted_vectors)
-        len_embed = self.length_embed_layer(lens.long())
+        len_embed = self.length_embed_layer(target_lens.long())
         converted_vectors = rc * converted_vectors + 0.5 * pos_embed + 0.5 * len_embed[:, None, :]
-        return converted_vectors, y_mask
+        return converted_vectors
 
     def convert_length_with_delta(self, z, z_mask, delta):
         """Adjust the number of latent variables with predicted delta
@@ -194,7 +193,7 @@ class LANMTModel(Transformer):
             half_maxsteps = float(self.max_train_steps / 2)
             if step > half_maxsteps:
                 rate = (float(step) - half_maxsteps) / half_maxsteps
-                min_budget = 0.1
+                min_budget = 0.
                 budget = min_budget + (budget_upperbound - min_budget) * (1. - rate)
             else:
                 budget = budget_upperbound
@@ -242,7 +241,7 @@ class LANMTModel(Transformer):
         length_scores = self.compute_length_predictor_loss(prior_states, sampled_z, z_mask, y_mask)
         score_map.update(length_scores)
         # Padding z to fit target states
-        z_with_y_length, _ = self.convert_length(sampled_z, z_mask, y_mask)
+        z_with_y_length = self.convert_length(sampled_z, z_mask, y_mask.sum(-1))
 
         # --------------------------  Decoder -------------------------------#
         decoder_states = self.decoder(z_with_y_length, y_mask, prior_states, x_mask)
@@ -268,12 +267,9 @@ class LANMTModel(Transformer):
             torch.autograd.backward(decoder_tensors, decoder_grads)
         return score_map
 
-    def translate(self, x, latent=None, prior_states=None, latent_search=None):
+    def translate(self, x, latent=None, prior_states=None, refine_step=0):
         """ Testing codes.
         """
-        if latent_search is not None and latent_search > 1:
-            return self.translate_multiple_latents(x, latent=latent, prior_states=prior_states,
-                                                   candidate_num=latent_search)
         x_mask = torch.ne(x, 0).float()
         # Compute p(z|x)
         if prior_states is None:
@@ -281,58 +277,39 @@ class LANMTModel(Transformer):
         # Sample latent variables from prior if it's not given
         if latent is None:
             prior_prob = self.prior_prob_estimator(prior_states)
-            latent = self.deterministic_sample_from_prob(prior_prob)
+            if not OPTS.Tlatent_search:
+                latent = self.deterministic_sample_from_prob(prior_prob)
+            else:
+                latent = self.bottleneck.sample_any_dist(prior_prob, samples=OPTS.Tcandidate_num, noise_level=0.5)
+                latent = self.latent2vector_nn(latent)
         # Predict length
         length_delta = self.predict_length(prior_states, latent, x_mask)
         # Adjust the number of latent
-        converted_z, y_mask, y_lens = self.convert_length_with_delta(self, latent, x_mask, length_delta + 1)
+        converted_z, y_mask, y_lens = self.convert_length_with_delta(latent, x_mask, length_delta + 1)
         if converted_z.size(1) == 0:
-            return None, y_lens, prior_prob.argmax(-1)
+            return None, latent, prior_prob.argmax(-1)
         # Run decoder to predict the target words
         decoder_states = self.decoder(converted_z, y_mask, prior_states, x_mask)
-        # Get the target predictions with argmax
         logits = self.expander_nn(decoder_states)
-        pred = logits.argmax(-1)
-
-        return pred, latent, prior_states
-
-    def translate_multiple_latents(self, x, latent=None, prior_states=None, candidate_num=None):
-        x_mask = torch.ne(x, 0).float()
-        # Compute p(z|x)
-        if prior_states is None:
-            prior_states = self.xz_encoders[0](x, x_mask)
-        # Sample a z
-        if latent is not None:
-            # Z is provided
-            z = latent
-        else:
-            # Compute prior to get Z
-            xz_prob = self.xz_softmax[0](prior_states)
-            z = self.bottleneck.sample_any_dist(xz_prob, samples=candidate_num, noise_level=0.5)
-            z = self.latent2vector_nn(z)
-        # Predict length
-        length_delta = self.predict_length(prior_states, z, x_mask)
-        # Padding z to cover the length of y
-        z_pad, z_pad_mask, y_lens = self.convert_length_with_delta(self, z, x_mask, length_delta + 1)
-        assert z_pad.size(1) > 0
-        # Run decoder to predict the target words
-        decoder_states = self.decoder(z_pad, z_pad_mask, prior_states, x_mask)
-        # Get the predictions
-        logits = self.expander_nn(decoder_states)
-        if (OPTS.Tsearchz or OPTS.Tsearchlen) and not OPTS.Trescore:
-            if latent is not None or OPTS.Tgibbs < 1:
+        # Get the target predictions
+        if OPTS.Tlatent_search and not OPTS.Tteacher_rescore:
+            # Latent search without teacher rescoring is dangeous
+            # because the generative model framework can't effeciently and correctly score hypotheses
+            if refine_step == OPTS.Trefine_steps:
+                # In the finally step, pick the best hypotheses
                 logprobs, preds = torch.log_softmax(logits, 2).max(2)
-                logprobs = (logprobs * z_pad_mask).sum(1)  # x batch x 1
-                preds = preds * z_pad_mask.long()
+                logprobs = (logprobs * y_mask).sum(1)  # x batch x 1
+                preds = preds * y_mask.long()
                 # after deterimistic refinement
                 pred = preds[logprobs.argmax()].unsqueeze(0)
             else:
+                # Just return all candidates
                 pred = logits.argmax(-1)
-                pred = pred * z_pad_mask.long()
+                pred = pred * y_mask.long()
         else:
             pred = logits.argmax(-1)
 
-        return pred, z, prior_states
+        return pred, latent, prior_states
 
     def measure_ELBO(self, x, y):
         """Measure the ELBO in the inference time.
@@ -348,7 +325,7 @@ class LANMTModel(Transformer):
         likelihood_list = []
         for _ in range(20):
             z, yz_prob = self.sample_from_Q(yz_states)
-            z_pad, _ = self.convert_length(self, z, x_mask, y_mask)
+            z_pad = self.convert_length(self, z, x_mask, y_mask.sum(-1))
             decoder_states = self.decoder(z_pad, y_mask, xz_states, x_mask)
             logits = self.expander_nn(decoder_states)
             likelihood = - F.cross_entropy(logits[0], y[0], reduction="sum")

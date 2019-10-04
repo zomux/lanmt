@@ -19,7 +19,7 @@ from nmtlab import MTTrainer, MTDataset
 from nmtlab.utils import OPTS, Vocab
 from nmtlab.schedulers import TransformerScheduler, SimpleScheduler
 from nmtlab.utils import is_root_node
-from nmtlab.evaluation import MosesBLEUEvaluator
+from nmtlab.evaluation import MosesBLEUEvaluator, SacreBLEUEvaluator
 from collections import defaultdict
 import numpy as np
 from argparse import ArgumentParser
@@ -29,6 +29,10 @@ from lib_rescoring import load_rescoring_transformer
 from datasets import get_dataset_paths
 
 DATA_ROOT = "./mydata"
+PRETRAINED_MODEL_MAP = {
+    "wmt14_ende": "{}/shu_trained_wmt14_ende.pt".format(DATA_ROOT),
+    "aspec_jaen": "{}/shu_trained_aspec_jaen.pt".format(DATA_ROOT),
+}
 TRAINING_MAX_TOKENS = 60
 
 ap = ArgumentParser()
@@ -38,6 +42,7 @@ ap.add_argument("--train", action="store_true")
 ap.add_argument("--measure_elbo", action="store_true")
 ap.add_argument("--evaluate", action="store_true")
 ap.add_argument("--all", action="store_true")
+ap.add_argument("--use_pretrain", action="store_true", help="use pretrained model trained by Raphael Shu")
 ap.add_argument("--opt_dtok", default="", type=str, help="dataset token")
 ap.add_argument("--opt_seed", type=int, default=3, help="random seed")
 
@@ -164,7 +169,9 @@ if OPTS.train or OPTS.all:
         criteria="loss",
     )
     if OPTS.finetune:
-        pretrain_path = OPTS.model_path.replace("_klft", "")
+        pretrain_path = OPTS.model_path.replace("_finetune", "")
+        if is_root_node():
+            print("loading model:", pretrain_path)
         assert os.path.exists(pretrain_path)
         nmt.load(pretrain_path)
     if OPTS.resume:
@@ -178,8 +185,18 @@ if OPTS.test or OPTS.all:
         sys.exit()
     torch.manual_seed(OPTS.seed)
     # Load trained model
-    assert os.path.exists(OPTS.model_path)
-    nmt.load(OPTS.model_path)
+    if OPTS.use_pretrain:
+        if OPTS.dtok not in PRETRAINED_MODEL_MAP:
+            print("The model for {} doesn't exist".format(OPTS.dtok))
+        model_path = PRETRAINED_MODEL_MAP[OPTS.dtok]
+        print("loading pretrained model in {}".format(model_path))
+        OPTS.result_path = OPTS.result_path.replace("lanmt", "lanmt_pretrain")
+    else:
+        model_path = OPTS.model_path
+    if not os.path.exists(model_path):
+        print("Cannot find model in {}".format(model_path))
+        sys.exit()
+    nmt.load(model_path)
     if torch.cuda.is_available():
         nmt.cuda()
     nmt.train(False)
@@ -202,7 +219,7 @@ if OPTS.test or OPTS.all:
             start_time = time.time()
             with torch.no_grad():
                 # Predict latent and target words from prior
-                targets, _, prior_states = nmt.translate(x, latent_search=latent_candidate_num)
+                targets, _, prior_states = nmt.translate(x)
                 target_tokens = targets.cpu().numpy()[0].tolist()
                 if OPTS.measure_elbo:
                     # Record EBLO
@@ -214,7 +231,7 @@ if OPTS.test or OPTS.all:
                     prev_target = tuple(target_tokens)
                     new_latent, _ = nmt.compute_Q(x, targets)
                     targets, _, _ = nmt.translate(x, latent=new_latent, prior_states=prior_states,
-                                                  latent_search=latent_candidate_num)
+                                                  refine_step=infer_step + 1)
                     target_tokens = targets[0].cpu().numpy().tolist()
                     if OPTS.measure_elbo:
                         # Record EBLO
@@ -232,14 +249,14 @@ if OPTS.test or OPTS.all:
             end_time = time.time()
             decode_times.append((end_time - start_time) * 1000.)
             # Convert token IDs back to words
-            target = [t for t in target_tokens if t > 2]
+            target_tokens = [t for t in target_tokens if t > 2]
             target_words = tgt_vocab.decode(target_tokens)
             target_sent = " ".join(target_words)
             outf.write(target_sent + "\n")
             sys.stdout.write(".")
             sys.stdout.flush()
     sys.stdout.write("\n")
-    print("Average decoding time: {:.0f}, std: {:.0f}".format(np.mean(decode_times), np.std(decode_times)))
+    print("Average decoding time: {:.0f}ms, std: {:.0f}".format(np.mean(decode_times), np.std(decode_times)))
     if OPTS.measure_elbo:
         for k in elbo_map:
             print("elbomap", k, len(elbo_map[k]), "std=", np.std(elbo_map[k]))
@@ -273,11 +290,9 @@ if OPTS.evaluate or OPTS.all:
                 outf.write(line)
         # Get BLEU score
         if "wmt" in OPTS.dtok:
-            from nmtlab.evaluation import SacreBLEUEvaluator
             evaluator = SacreBLEUEvaluator(ref_path=ref_path, tokenizer="intl", lowercase=True)
-            bleu = evaluator.evaluate(hyp_path)
         else:
             evaluator = MosesBLEUEvaluator(ref_path=ref_path)
-            bleu = evaluator.evaluate(hyp_path)
-        print("BLEU=", bleu)
+        bleu = evaluator.evaluate(hyp_path)
+        print("BLEU =", bleu)
 

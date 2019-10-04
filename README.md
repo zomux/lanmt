@@ -24,7 +24,7 @@ In this model, we learn a set of continuous latent variables ![z](https://latex.
 <p align="center">
 <img src="https://i.imgur.com/qh7sPlB.png" width="400px"/>
 </p> 
- 
+
 In practice, we force the latent variables to have very low dimensions such as 8. Obviously, handling things in a low-dimension countinuous space is easier comparing to a high-dimension discrete space.
 
 Our model is trained by maximizing the following objective, which is a lower bound of log-likehood. We  call it *evidence lower bound* (ELBO). The first part is a reconstruction loss that makes sure you can predict target sequence from ![z](https://latex.codecogs.com/png.latex?\fn_cs%20z). The second part is a KL divergence, which makes the ![z](https://latex.codecogs.com/png.latex?\fn_cs%20z) more predictable given the source sequence.
@@ -199,11 +199,24 @@ nde --opt_batchtokens 8192 --opt_distill --opt_annealbudget --test --opt_Trefine
 
 
 
+## Use our pre-tained models
+
+
+
 ## Summary of  results
+ 
 
 
-
-| Options | BLEU |
-| ------- | ---- |
-|         |      |
+| Dataset         | Options                                                      | BLEU  | Decode Time (avg/std) | Speedup |
+| --------------- | ------------------------------------------------------------ | ----- | --------------------- | ------- |
+| **WMT14 En-De** | Our baseline Transformer (beam size=3)                       | 26.10 | 602ms / 274           |         |
+|                 | `--use_pretrain`                                             | 22.30 | 18ms / 4              | 33.4x   |
+|                 | `--use_pretrain --opt_Trefine_steps 1`                       | 24.14 | 46ms / 4              | 13.0x   |
+|                 | `--use_pretrain --opt_Trefine_steps 1 --opt_Tlatent_search`  | 25.01 | 67ms / 18             | 8.9x    |
+|                 | `--use_pretrain --opt_Trefine_steps 1 --opt_Tlatent_search --opt_Tteacher_rescore` | 25.16 | 89ms / 22             | 6.7x    |
+| **ASPEC Ja-En** | Our baseline Transformer (beam size=3)                       | 27.15 | 415ms / 159           |         |
+|                 | `--use_pretrain`                                             | 25.28 | 21ms / 4              | 19.7x   |
+|                 | `--use_pretrain --opt_Trefine_steps 1`                       | 27.53 | 47ms / 8              | 8.8x    |
+|                 | `--use_pretrain --opt_Trefine_steps 1 --opt_Tlatent_search`  | 28.08 | 69ms / 18             | 6.0x    |
+|                 | `--use_pretrain --opt_Trefine_steps 1 --opt_Tlatent_search --opt_Tteacher_rescore` | 28.26 | 99ms / 23             | 4.2x    |
 
