@@ -43,7 +43,7 @@ Now for the parameterization, the model is implemented with the architecture in 
 
 <p align="center">
 <img src="https://i.imgur.com/a3x9tni.png" width="400px"/>
-</p>
+</p> 
 
 One thing special about this model is that the number of latent variables is always identical to the source tokens, as you can guess from the second figure in this post. As each ![z_i](https://latex.codecogs.com/png.latex?\fn_cs%20z_i) is a continuous vector, ![z](https://latex.codecogs.com/png.latex?\fn_cs%20z) is a ![L_x by D](https://latex.codecogs.com/png.latex?\fn_cs%20L_x\times%20D) matrix, where ![L_x](https://latex.codecogs.com/png.latex?\fn_cs%20L_x) is the length of the source sequence, and D is the dimension of latent variables. For the Transformer decoder to predict target tokens that have a length longer or shorter than ![L_x](https://latex.codecogs.com/png.latex?\fn_cs%20L_x), we need a funtion to adjust the length of latent variables, just like this:
 
@@ -239,7 +239,7 @@ BLEU = 25.166677019716257
 
 ## Use our pre-trained models
 
-If you just want to test out the model and check the decoding speed and quality of translations, you can download our pre-trained models. By running the script with these models, you will get the exactly same BLEU scores as we reported in the paper.
+If you just want to test out the model and check the decoding speed and quality of translations, you can download our pre-trained models. By running the script with these models, you will get exactly the same BLEU scores as we reported in the paper.
 
 -1. Download the pre-trained models (1GB)
 
@@ -255,6 +255,8 @@ cd ..
 -2. Translate using pre-trained models
 
 ```
+# Lightning fast translation
+python run.py --opt_dtok wmt14_ende --use_pretrain --test --evaluate
 # With one refinement step
 python run.py --opt_dtok wmt14_ende --use_pretrain --opt_Trefine_steps 1 --test --evaluate
 # With latent search and teacher rescoring
@@ -266,6 +268,8 @@ python run.py --opt_dtok wmt14_ende --use_pretrain --opt_Trefine_steps 1 --opt_T
 -3. (Option) Evaluate the pre-trained model on ASPEC Ja-En dataset
 
 ```
+# Lightning fast translation
+python run.py --opt_dtok aspec_jaen --use_pretrain --test --evaluate
 # With one refinement step
 python run.py --opt_dtok aspec_jaen --use_pretrain --opt_Trefine_steps 1 --test --evaluate
 # With latent search and teacher rescoring
