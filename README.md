@@ -163,9 +163,11 @@ python run.py --opt_dtok wmt14_ende --opt_batchtokens 8192 --opt_distill --opt_a
 
 ```
 # If you have 16GB GPU memory
-horovodrun -np 8 -H localhost:8 python run.py --opt_dtok wmt14_ende --opt_batchtokens 4096 --opt_distill --opt_annealbudget --train
+horovodrun -np 8 -H localhost:8 python run.py --opt_dtok wmt14_ende --opt_batchtokens 4096 \
+--opt_distill --opt_annealbudget --train
 # If you have 32GB GPU memory
-horovodrun -np 8 -H localhost:8 python run.py --opt_dtok wmt14_ende --opt_batchtokens 8192 --opt_distill --opt_annealbudget --train
+horovodrun -np 8 -H localhost:8 python run.py --opt_dtok wmt14_ende --opt_batchtokens 8192 \
+--opt_distill --opt_annealbudget --train
 ```
 
 
@@ -196,9 +198,11 @@ After finishing the model training, we also find it helpful to fix the KL budget
 
 ```
 # Single GPU
-python run.py --opt_dtok wmt14_ende --opt_batchtokens 4092 --opt_distill --opt_annealbudget --opt_finetune --train
+python run.py --opt_dtok wmt14_ende --opt_batchtokens 4092 --opt_distill --opt_annealbudget \
+--opt_finetune --train
 # Multi-GPU
-horovodrun -np 8 -H localhost:8 python run.py --opt_dtok wmt14_ende --opt_batchtokens 4096 --opt_distill --opt_annealbudget --opt_finetune --train
+horovodrun -np 8 -H localhost:8 python run.py --opt_dtok wmt14_ende --opt_batchtokens 4096 \
+--opt_distill --opt_annealbudget --opt_finetune --train
 ```
 
 ## Inference
@@ -206,19 +210,22 @@ horovodrun -np 8 -H localhost:8 python run.py --opt_dtok wmt14_ende --opt_batcht
 To generate translations and measure the decoding time, simply run
 
 ```
-python run.py --opt_dtok wmt14_ende --opt_batchtokens 8192 --opt_distill --opt_annealbudget --opt_finetune --test --evaluate
+python run.py --opt_dtok wmt14_ende --opt_batchtokens 8192 --opt_distill --opt_annealbudget \
+--opt_finetune --test --evaluate
 ```
 
 You will see the decoding time and evaluated BLEU scores at the end of lines. Then, let's try to refine the latent variables with deterministic inference for only one step
 
 ```
-python run.py --opt_dtok wmt14_ende --opt_batchtokens 8192 --opt_distill --opt_annealbudget --opt_finetune --opt_Trefine_steps 1 --test --evaluate
+python run.py --opt_dtok wmt14_ende --opt_batchtokens 8192 --opt_distill --opt_annealbudget \
+--opt_finetune --opt_Trefine_steps 1 --test --evaluate
 ```
 
 We can also sample multiple latent variables from the prior, getting multiple candidate translations then use an autoregressive Transformer model to rescore them, you can do this by running
 
 ```
-python run.py --opt_dtok wmt14_ende --opt_batchtokens 8192 --opt_distill --opt_annealbudget --opt_finetune --opt_Trefine_steps 1 --opt_Tlatent_search --opt_Tteacher_rescore --test --evaluate
+python run.py --opt_dtok wmt14_ende --opt_batchtokens 8192 --opt_distill --opt_annealbudget \
+--opt_finetune --opt_Trefine_steps 1 --opt_Tlatent_search --opt_Tteacher_rescore --test --evaluate
 ```
 
 With the `--evaluate` option, the script will evalaute the BLEU scores with sacrebleu. Once the script finishes you shall see the decoding time and BLEU scores like this
