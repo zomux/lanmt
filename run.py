@@ -38,6 +38,7 @@ TRAINING_MAX_TOKENS = 60
 ap = ArgumentParser()
 ap.add_argument("--resume", action="store_true")
 ap.add_argument("--test", action="store_true")
+ap.add_argument("--batch_test", action="store_true")
 ap.add_argument("--train", action="store_true")
 ap.add_argument("--evaluate", action="store_true")
 ap.add_argument("--all", action="store_true")
@@ -51,6 +52,7 @@ ap.add_argument("--opt_hiddensz", type=int, default=512)
 ap.add_argument("--opt_embedsz", type=int, default=512)
 ap.add_argument("--opt_heads", type=int, default=8)
 ap.add_argument("--opt_shard", type=int, default=32)
+ap.add_argument("--opt_longertrain", action="store_true")
 
 # Options for LANMT
 ap.add_argument("--opt_priorl", type=int, default=6, help="layers for each z encoder")
@@ -58,6 +60,7 @@ ap.add_argument("--opt_decoderl", type=int, default=6, help="number of decoder l
 ap.add_argument("--opt_latentdim", default=8, type=int, help="dimension of latent variables")
 ap.add_argument("--opt_distill", action="store_true", help="train with knowledge distillation")
 ap.add_argument("--opt_annealbudget", action="store_true", help="switch of annealing KL budget")
+ap.add_argument("--opt_fixbug1", action="store_true", help="fix bug in length converter")
 ap.add_argument("--opt_finetune", action="store_true",
                 help="finetune the model without limiting KL with a budget")
 
@@ -66,6 +69,7 @@ ap.add_argument("--opt_Trefine_steps", type=int, default=0, help="steps of runni
 ap.add_argument("--opt_Tlatent_search", action="store_true", help="whether to search over multiple latents")
 ap.add_argument("--opt_Tteacher_rescore", action="store_true", help="whether to use teacher rescoring")
 ap.add_argument("--opt_Tcandidate_num", default=50, type=int, help="number of latent candidate for latent search")
+ap.add_argument("--opt_Tbatch_size", default=800, type=int, help="batch size for batch translate")
 
 # Paths
 ap.add_argument("--model_path",
@@ -106,6 +110,9 @@ if is_root_node():
     training_maxsteps,
     pretrained_autoregressive_path
 ) = get_dataset_paths(DATA_ROOT, OPTS.dtok)
+
+if OPTS.longertrain:
+    training_maxsteps = int(training_maxsteps * 1.5)
 
 # Define dataset
 if OPTS.distill:
@@ -204,7 +211,6 @@ if OPTS.test or OPTS.all:
     result_path = OPTS.result_path
     # Read data
     lines = open(test_src_corpus).readlines()
-    tgt_lines = open(test_tgt_corpus).readlines()
     latent_candidate_num = OPTS.Tcandidate_num if OPTS.Tlatent_search else None
     decode_times = []
     with open(OPTS.result_path, "w") as outf:
@@ -247,6 +253,76 @@ if OPTS.test or OPTS.all:
             sys.stdout.flush()
     sys.stdout.write("\n")
     print("Average decoding time: {:.0f}ms, std: {:.0f}".format(np.mean(decode_times), np.std(decode_times)))
+
+# Translate multiple sentences in batch
+if OPTS.batch_test:
+    # Translate using only one GPU
+    if not is_root_node():
+        sys.exit()
+    torch.manual_seed(OPTS.seed)
+    if OPTS.Tlatent_search:
+        print("--opt_Tlatent_search is not supported in batch test mode right now. Try to implement it.")
+    # Load trained model
+    if OPTS.use_pretrain:
+        if OPTS.dtok not in PRETRAINED_MODEL_MAP:
+            print("The model for {} doesn't exist".format(OPTS.dtok))
+        model_path = PRETRAINED_MODEL_MAP[OPTS.dtok]
+        print("loading pretrained model in {}".format(model_path))
+        OPTS.result_path = OPTS.result_path.replace("lanmt_", "lanmt_pretrain_")
+    else:
+        model_path = OPTS.model_path
+    if not os.path.exists(model_path):
+        print("Cannot find model in {}".format(model_path))
+        sys.exit()
+    nmt.load(model_path)
+    if torch.cuda.is_available():
+        nmt.cuda()
+    nmt.train(False)
+    src_vocab = Vocab(src_vocab_path)
+    tgt_vocab = Vocab(tgt_vocab_path)
+    result_path = OPTS.result_path
+    # Read data
+    batch_test_size = OPTS.Tbatch_size
+    lines = open(test_src_corpus).readlines()
+    with open(OPTS.result_path, "w") as outf:
+        start_time = time.time()
+        output_tokens = []
+        for i in range(0, len(lines), batch_test_size):
+            # Make a batch
+            batch_tokens = []
+            batch_lines = lines[i: i + batch_test_size]
+            max_len = max(map(len, batch_lines))
+            x = np.zeros((len(batch_lines), max_len + 2), dtype="long")
+            for j, line in enumerate(batch_lines):
+                tokens = src_vocab.encode("<s> {} </s>".format(line.strip()).split())
+                x[j, :len(tokens)] = tokens
+            x = torch.tensor(x)
+            if torch.cuda.is_available():
+                x = x.cuda()
+            with torch.no_grad():
+                # Predict latent and target words from prior
+                targets, _, prior_states = nmt.translate(x)
+                # Interative inference
+                for infer_step in range(OPTS.Trefine_steps):
+                    # Sample latent from Q and draw a new target prediction
+                    new_latent, _ = nmt.compute_Q(x, targets)
+                    targets, _, _ = nmt.translate(x, latent=new_latent, prior_states=prior_states,
+                                                  refine_step=infer_step + 1)
+            target_tokens = targets.cpu().numpy().tolist()
+            output_tokens.extend(target_tokens)
+            sys.stdout.write("\rtranslating: {:.1f}%  ".format(float(i) * 100 / len(lines)))
+            sys.stdout.flush()
+        # Record decoding time
+        end_time = time.time()
+        decode_time = (end_time - start_time)
+        # Convert token IDs back to words
+        for target_tokens in output_tokens:
+            target_tokens = [t for t in target_tokens if t > 2]
+            target_words = tgt_vocab.decode(target_tokens)
+            target_sent = " ".join(target_words)
+            outf.write(target_sent + "\n")
+    sys.stdout.write("\n")
+    print("Batch decoding time: {:.2f}s".format(decode_time))
 
 # Evaluation of translaton quality
 if OPTS.evaluate or OPTS.all:

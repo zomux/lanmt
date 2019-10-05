@@ -12,6 +12,7 @@ from nmtlab.modules.transformer_modules import TransformerEncoderLayer
 from nmtlab.modules.transformer_modules import TransformerFeedForward
 from nmtlab.modules.transformer_modules import MultiHeadAttention
 from nmtlab.modules.transformer_modules import residual_connect
+from nmtlab.utils import OPTS
 
 
 class TransformerEncoder(nn.Module):
@@ -136,7 +137,11 @@ class LengthConverter(nn.Module):
         arange_l = arange_l[None, :].repeat(z.size(0), 1).float()
         mu = arange_l * n[:, None].float() / ls[:, None].float()
         arange_z = arange_z[None, None, :].repeat(z.size(0), ls.max().long(), 1).float()
-        logits = - torch.pow(2, arange_z - mu[:, :, None]) / (2. * self.sigma ** 2)
+        if OPTS.fixbug1:
+            logits = - torch.pow(arange_z - mu[:, :, None], 2) / (2. * self.sigma ** 2)
+        else:
+            distance = torch.clamp(arange_z - mu[:, :, None], -100, 100)
+            logits = - torch.pow(2, distance) / (2. * self.sigma ** 2)
         logits = logits * z_mask[:, None, :] - 99. * (1 - z_mask[:, None, :])
         weight = torch.softmax(logits, 2)
         z_prime = (z[:, None, :, :] * weight[:, :, :, None]).sum(2)
