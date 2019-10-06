@@ -222,9 +222,6 @@ class LANMTModel(Transformer):
     def forward(self, x, y, sampling=False, return_code=False):
         """Model training.
         """
-        if OPTS.fp16:
-            x = x.half()
-            y = y.half()
         score_map = {}
         x_mask = torch.ne(x, 0).float()
         y_mask = torch.ne(y, 0).float()
