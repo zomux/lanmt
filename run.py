@@ -71,6 +71,9 @@ ap.add_argument("--opt_Tteacher_rescore", action="store_true", help="whether to 
 ap.add_argument("--opt_Tcandidate_num", default=50, type=int, help="number of latent candidate for latent search")
 ap.add_argument("--opt_Tbatch_size", default=800, type=int, help="batch size for batch translate")
 
+# Experimental options
+ap.add_argument("--opt_fp16", action="store_true")
+
 # Paths
 ap.add_argument("--model_path",
                 default="{}/lanmt.pt".format(DATA_ROOT))
