@@ -298,3 +298,9 @@ python run.py --opt_dtok aspec_jaen --use_pretrain --opt_Trefine_steps 1 --opt_T
 1. Training is slow
 
 > Try to install horovod with nccl support. Training will be much faster with nccl for gradient synchronization.
+
+## Todos
+
+- [ ] Support half precision training
+- [ ] Validation with BLEU criteria
+- [ ] Update the distillation data with a new baseline model
