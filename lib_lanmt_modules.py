@@ -137,6 +137,10 @@ class LengthConverter(nn.Module):
         arange_l = arange_l[None, :].repeat(z.size(0), 1).float()
         mu = arange_l * n[:, None].float() / ls[:, None].float()
         arange_z = arange_z[None, None, :].repeat(z.size(0), ls.max().long(), 1).float()
+        if OPTS.fp16:
+            arange_l = arange_l.half()
+            mu = mu.half()
+            arange_z = arange_z.half()
         if OPTS.fixbug1:
             logits = - torch.pow(arange_z - mu[:, :, None], 2) / (2. * self.sigma ** 2)
         else:
@@ -145,7 +149,10 @@ class LengthConverter(nn.Module):
         logits = logits * z_mask[:, None, :] - 99. * (1 - z_mask[:, None, :])
         weight = torch.softmax(logits, 2)
         z_prime = (z[:, None, :, :] * weight[:, :, :, None]).sum(2)
-        z_prime_mask = (arange_l < ls[:, None].float()).float()
+        if OPTS.fp16:
+            z_prime_mask = (arange_l < ls[:, None].half()).half()
+        else:
+            z_prime_mask = (arange_l < ls[:, None].float()).float()
         z_prime = z_prime * z_prime_mask[:, :, None]
         return z_prime, z_prime_mask
 

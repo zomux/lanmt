@@ -6,6 +6,7 @@ from __future__ import division
 from __future__ import print_function
 
 import math
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -16,6 +17,7 @@ from nmtlab.modules.transformer_modules import PositionalEmbedding
 from nmtlab.modules.transformer_modules import LabelSmoothingKLDivLoss
 from nmtlab.utils import OPTS
 from nmtlab.utils import TensorMap
+from nmtlab.utils import smoothed_bleu
 
 from lib_lanmt_modules import TransformerEncoder
 from lib_lanmt_modules import TransformerCrossEncoder
@@ -53,7 +55,10 @@ class LANMTModel(Transformer):
         self.KL_weight = KL_weight
         self.budget_annealing = budget_annealing
         self.max_train_steps = max_train_steps
-        self.training_criteria = "loss"
+        if OPTS.finetune:
+            self.training_criteria = "BLEU"
+        else:
+            self.training_criteria = "loss"
         super(LANMTModel, self).__init__(**kwargs)
 
     def prepare(self):
@@ -88,12 +93,14 @@ class LANMTModel(Transformer):
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
+        if self._fp16:
+            self.half()
 
     def compute_Q(self, x, y):
         """Compute the approximated posterior q(z|x,y) and sample from it.
         """
-        x_mask = torch.ne(x, 0).float()
-        y_mask = torch.ne(y, 0).float()
+        x_mask = self.to_float(torch.ne(x, 0))
+        y_mask = self.to_float(torch.ne(y, 0))
         # Compute p(z|y,x) and sample z
         q_states = self.compute_Q_states(self.x_embed_layer(x), x_mask, y, y_mask)
         sampled_latent, q_prob = self.sample_from_Q(q_states, sampling=False)
@@ -124,7 +131,7 @@ class LANMTModel(Transformer):
         mean_z = ((z + xz_states) * z_mask[:, :, None]).sum(1) / z_mask.sum(1)[:, None]
         logits = self.length_predictor(mean_z)
         length_loss = F.cross_entropy(logits, delta, reduction="mean")
-        length_acc = ((logits.argmax(-1) == delta).float()).mean()
+        length_acc = self.to_float(logits.argmax(-1) == delta).mean()
         length_scores = {
             "len_loss": length_loss,
             "len_acc": length_acc
@@ -164,7 +171,7 @@ class LANMTModel(Transformer):
         arange = torch.arange(y_lens.max().long())
         if torch.cuda.is_available():
             arange = arange.cuda()
-        y_mask = (arange[None, :].repeat(z.size(0), 1) < y_lens[:, None]).float()
+        y_mask = self.to_float(arange[None, :].repeat(z.size(0), 1) < y_lens[:, None])
         return converted_vectors, y_mask, y_lens
 
     def deterministic_sample_from_prob(self, z_prob):
@@ -201,13 +208,13 @@ class LANMTModel(Transformer):
             budget = self.KL_budget
         score_map["KL_budget"] = torch.tensor(budget)
         # Compute KL divergence
-        max_mask = ((kl - budget) > 0.).float()
+        max_mask = self.to_float((kl - budget) > 0.)
         kl = kl * max_mask + (1. - max_mask) * budget
-        kl_loss = (kl * x_mask).sum() / x_mask.shape[0]
+        kl_loss = (kl * x_mask / x_mask.shape[0]).sum()
         # Report KL divergence
         score_map["kl"] = kl_loss
         # Also report the averge KL for each token
-        score_map["tok_kl"] = (kl * x_mask).sum() / x_mask.sum()
+        score_map["tok_kl"] = (kl * x_mask / x_mask.sum()).sum()
         # Report cross-entropy loss
         score_map["nll"] = score_map["loss"]
         # Cross-entropy loss is *already* backproped when computing softmaxes in shards
@@ -223,8 +230,8 @@ class LANMTModel(Transformer):
         """Model training.
         """
         score_map = {}
-        x_mask = torch.ne(x, 0).float()
-        y_mask = torch.ne(y, 0).float()
+        x_mask = self.to_float(torch.ne(x, 0))
+        y_mask = self.to_float(torch.ne(y, 0))
 
         # ----------- Compute prior and approximated posterior -------------#
         # Compute p(z|x)
@@ -253,24 +260,31 @@ class LANMTModel(Transformer):
             loss_scores, decoder_tensors, decoder_grads = self.compute_shard_loss(
                 decoder_outputs, y, y_mask, denominator=denom, ignore_first_token=False, backward=False
             )
-            loss_scores["word_acc"] *= float(y_mask.shape[0]) / y_mask.sum().float()
+            loss_scores["word_acc"] *= float(y_mask.shape[0]) / self.to_float(y_mask.sum())
             score_map.update(loss_scores)
         else:
             raise SystemError("Shard size must be setted or the memory is not enough for this model.")
 
         score_map, remain_loss = self.compute_final_loss(q_prob, prior_prob, z_mask, score_map)
+        # Report smoothed BLEU during validation
+        if not torch.is_grad_enabled() and self.training_criteria == "BLEU":
+            logits = self.expander_nn(decoder_outputs["final_states"])
+            predictions = logits.argmax(-1)
+            score_map["BLEU"] = - self.get_BLEU(predictions, y)
 
         # --------------------------  Bacprop gradient --------------------#
         if self._shard_size is not None and self._shard_size > 0 and decoder_tensors is not None:
             decoder_tensors.append(remain_loss)
             decoder_grads.append(None)
             torch.autograd.backward(decoder_tensors, decoder_grads)
+        if torch.isnan(score_map["loss"]) or torch.isinf(score_map["loss"]):
+            import pdb;pdb.set_trace()
         return score_map
 
     def translate(self, x, latent=None, prior_states=None, refine_step=0):
         """ Testing codes.
         """
-        x_mask = torch.ne(x, 0).float()
+        x_mask = self.to_float(torch.ne(x, 0))
         # Compute p(z|x)
         if prior_states is None:
             prior_states = self.prior_encoder(x, x_mask)
@@ -311,3 +325,17 @@ class LANMTModel(Transformer):
 
         return pred, latent, prior_states
 
+    def get_BLEU(self, batch_y_hat, batch_y):
+        """Get the average smoothed BLEU of the predictions."""
+        hyps = batch_y_hat.tolist()
+        refs = batch_y.tolist()
+        bleus = []
+        for hyp, ref in zip(hyps, refs):
+            if 2 in hyp:
+                hyp = hyp[:hyp.index(2)]
+            if 2 in ref:
+                ref = ref[:ref.index(2)]
+            hyp = hyp[1:]
+            ref = ref[1:]
+            bleus.append(smoothed_bleu(hyp, ref))
+        return torch.tensor(np.mean(bleus) * 100.)

@@ -15,6 +15,7 @@ import torch
 from torch import optim
 sys.path.append(".")
 
+import nmtlab
 from nmtlab import MTTrainer, MTDataset
 from nmtlab.utils import OPTS, Vocab
 from nmtlab.schedulers import TransformerScheduler, SimpleScheduler
@@ -69,7 +70,7 @@ ap.add_argument("--opt_Trefine_steps", type=int, default=0, help="steps of runni
 ap.add_argument("--opt_Tlatent_search", action="store_true", help="whether to search over multiple latents")
 ap.add_argument("--opt_Tteacher_rescore", action="store_true", help="whether to use teacher rescoring")
 ap.add_argument("--opt_Tcandidate_num", default=50, type=int, help="number of latent candidate for latent search")
-ap.add_argument("--opt_Tbatch_size", default=800, type=int, help="batch size for batch translate")
+ap.add_argument("--opt_Tbatch_size", default=8000, type=int, help="batch size for batch translate")
 
 # Experimental options
 ap.add_argument("--opt_fp16", action="store_true")
@@ -117,6 +118,11 @@ if is_root_node():
 if OPTS.longertrain:
     training_maxsteps = int(training_maxsteps * 1.5)
 
+if nmtlab.__version__ < "0.7.0":
+    print("lanmt now requires nmtlab >= 0.7.0")
+    print("Update by pip install -U nmtlab")
+    sys.exit()
+
 # Define dataset
 if OPTS.distill:
     tgt_corpus = distilled_tgt_corpus
@@ -149,7 +155,8 @@ lanmt_options.update(dict(
     latent_dim=OPTS.latentdim,
     KL_budget=0. if OPTS.finetune else 1.,
     budget_annealing=OPTS.annealbudget,
-    max_train_steps=training_maxsteps
+    max_train_steps=training_maxsteps,
+    fp16=OPTS.fp16
 ))
 
 nmt = LANMTModel(**lanmt_options)
@@ -287,39 +294,53 @@ if OPTS.batch_test:
     # Read data
     batch_test_size = OPTS.Tbatch_size
     lines = open(test_src_corpus).readlines()
+    sorted_line_ids = np.argsort([len(l.split()) for l in lines])
+    start_time = time.time()
+    output_tokens = []
+    i = 0
+    while i < len(lines):
+        # Make a batch
+        batch_lines = []
+        max_len = 0
+        while len(batch_lines) * max_len < OPTS.Tbatch_size:
+            line_id = sorted_line_ids[i]
+            line = lines[line_id]
+            length = len(line.split())
+            batch_lines.append(line)
+            if length > max_len:
+                max_len = length
+            i += 1
+            if i >= len(lines):
+                break
+        x = np.zeros((len(batch_lines), max_len + 2), dtype="long")
+        for j, line in enumerate(batch_lines):
+            tokens = src_vocab.encode("<s> {} </s>".format(line.strip()).split())
+            x[j, :len(tokens)] = tokens
+        x = torch.tensor(x)
+        if torch.cuda.is_available():
+            x = x.cuda()
+        with torch.no_grad():
+            # Predict latent and target words from prior
+            targets, _, prior_states = nmt.translate(x)
+            # Interative inference
+            for infer_step in range(OPTS.Trefine_steps):
+                # Sample latent from Q and draw a new target prediction
+                new_latent, _ = nmt.compute_Q(x, targets)
+                targets, _, _ = nmt.translate(x, latent=new_latent, prior_states=prior_states,
+                                              refine_step=infer_step + 1)
+        target_tokens = targets.cpu().numpy().tolist()
+        output_tokens.extend(target_tokens)
+        sys.stdout.write("\rtranslating: {:.1f}%  ".format(float(i) * 100 / len(lines)))
+        sys.stdout.flush()
+
     with open(OPTS.result_path, "w") as outf:
-        start_time = time.time()
-        output_tokens = []
-        for i in range(0, len(lines), batch_test_size):
-            # Make a batch
-            batch_tokens = []
-            batch_lines = lines[i: i + batch_test_size]
-            max_len = max(map(len, batch_lines))
-            x = np.zeros((len(batch_lines), max_len + 2), dtype="long")
-            for j, line in enumerate(batch_lines):
-                tokens = src_vocab.encode("<s> {} </s>".format(line.strip()).split())
-                x[j, :len(tokens)] = tokens
-            x = torch.tensor(x)
-            if torch.cuda.is_available():
-                x = x.cuda()
-            with torch.no_grad():
-                # Predict latent and target words from prior
-                targets, _, prior_states = nmt.translate(x)
-                # Interative inference
-                for infer_step in range(OPTS.Trefine_steps):
-                    # Sample latent from Q and draw a new target prediction
-                    new_latent, _ = nmt.compute_Q(x, targets)
-                    targets, _, _ = nmt.translate(x, latent=new_latent, prior_states=prior_states,
-                                                  refine_step=infer_step + 1)
-            target_tokens = targets.cpu().numpy().tolist()
-            output_tokens.extend(target_tokens)
-            sys.stdout.write("\rtranslating: {:.1f}%  ".format(float(i) * 100 / len(lines)))
-            sys.stdout.flush()
         # Record decoding time
         end_time = time.time()
         decode_time = (end_time - start_time)
         # Convert token IDs back to words
-        for target_tokens in output_tokens:
+        id_token_pairs = list(zip(sorted_line_ids, output_tokens))
+        id_token_pairs.sort()
+        for _, target_tokens in id_token_pairs:
             target_tokens = [t for t in target_tokens if t > 2]
             target_words = tgt_vocab.decode(target_tokens)
             target_sent = " ".join(target_words)
