@@ -93,8 +93,8 @@ class LANMTModel(Transformer):
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
-        if self._fp16:
-            self.half()
+        # if self._fp16:
+        #     self.half()
 
     def compute_Q(self, x, y):
         """Compute the approximated posterior q(z|x,y) and sample from it.

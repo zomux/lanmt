@@ -122,6 +122,9 @@ if nmtlab.__version__ < "0.7.0":
     print("lanmt now requires nmtlab >= 0.7.0")
     print("Update by pip install -U nmtlab")
     sys.exit()
+if OPTS.fp16:
+    print("fp16 option is not ready")
+    sys.exit()
 
 # Define dataset
 if OPTS.distill:
@@ -169,7 +172,7 @@ if OPTS.train or OPTS.all:
         scheduler = SimpleScheduler(max_epoch=1)
     else:
         scheduler = TransformerScheduler(warm_steps=training_warmsteps, max_steps=training_maxsteps)
-    optimizer = optim.Adam(nmt.parameters(), lr=0.0001, betas=(0.9, 0.98))
+    optimizer = optim.Adam(nmt.parameters(), lr=0.0001, betas=(0.9, 0.98), eps=1e-4)
     trainer = MTTrainer(
         nmt, dataset, optimizer,
         scheduler=scheduler, multigpu=gpu_num > 1,
@@ -180,6 +183,9 @@ if OPTS.train or OPTS.all:
         n_valid_per_epoch=n_valid_per_epoch,
         criteria="loss",
     )
+    # if OPTS.fp16:
+    #     from apex import amp
+    #     model, optimizer = amp.initialize(nmt, optimizer, opt_level="O3")
     if OPTS.finetune:
         pretrain_path = OPTS.model_path.replace("_finetune", "")
         if is_root_node():
