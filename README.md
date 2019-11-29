@@ -6,11 +6,10 @@ LaNMT implements a latent-variable framework for non-autoregressive neural machi
 
 ```
 @article{Shu2019LaNMT,
-  title={Latent-Variable Non-Autoregressive Neural Machine Translation with Deterministic Inference using a Delta Posterior},
+  title={Latent-Variable Non-Autoregressive Neural Machine Translation with Deterministic Inference Using a Delta Posterior},
   author={Raphael Shu and Jason Lee and Hideki Nakayama and Kyunghyun Cho},
-  journal={ArXiv},
-  year={2019},``
-  volume={abs/1908.07181}
+  journal={AAAI},
+  year={2020}
 }
 ```
 #### What is non-autoregressive neural machine translation?
