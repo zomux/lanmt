@@ -27,7 +27,7 @@ def get_dataset_paths(data_root, dataset_tok):
     if dataset_tok == "wmt14_ende":
         train_src_corpus = "{}/wmt14_ende_train.en.sp".format(data_root)
         train_tgt_corpus = "{}/wmt14_ende_train.de.sp".format(data_root)
-        distilled_tgt_corpus = "{}/wmt14_ende.distill.tgt".format(data_root)
+        distilled_tgt_corpus = "{}/wmt14_ende.distill.chkavg.tgt".format(data_root)
         truncate_datapoints = None
 
         test_src_corpus = "{}/wmt14_ende_test.en.sp".format(data_root)
@@ -41,6 +41,24 @@ def get_dataset_paths(data_root, dataset_tok):
         training_warmsteps = 4000
         training_maxsteps = 100000
         pretrained_autoregressive_path = "{}/wmt14_ende_teacher.pt".format(data_root)
+    if dataset_tok == "wmt14_fair_ende":
+        train_src_corpus = "{}/train.en".format(data_root)
+        train_tgt_corpus = "{}/train.de".format(data_root)
+        distilled_tgt_corpus = "{}/train.distill.avg10.de".format(data_root)
+        truncate_datapoints = None
+
+        test_src_corpus = "{}/test.en".format(data_root)
+        test_tgt_corpus = "{}/test.de".format(data_root)
+        ref_path = "{}/test.ref.detok".format(data_root)
+
+        src_vocab_path = "{}/wmt14_fair_en.vocab".format(data_root)
+        tgt_vocab_path = "{}/wmt14_fair_de.vocab".format(data_root)
+
+        n_valid_per_epoch = 8
+        training_warmsteps = 4000
+        training_maxsteps = 100000
+        pretrained_autoregressive_path = "{}/wmt14_ende_teacher.pt".format(data_root)
+
 
     return (
         train_src_corpus,

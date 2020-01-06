@@ -119,6 +119,8 @@ class LANMTModel(Transformer):
     def sample_from_Q(self, q_states, sampling=True):
         """Estimate q(z|x,y) and sample a latent variable from it.
         """
+        if OPTS.diracq:
+            sampling = False
         sampled_z, q_prob = self.bottleneck(q_states, sampling=sampling)
         full_vector = self.latent2vector_nn(sampled_z)
         return full_vector, q_prob
@@ -144,8 +146,18 @@ class LANMTModel(Transformer):
         mu1 = q_prob[:, :, :self.latent_dim]
         var1 = F.softplus(q_prob[:, :, self.latent_dim:])
         mu2 = prior_prob[:, :, :self.latent_dim]
-        var2 = F.softplus(prior_prob[:, :, self.latent_dim:])
-        kl = torch.log(var2 / (var1 + 1e-8) + 1e-8) + (
+        if OPTS.sigmoidvar:
+            var2 = torch.sigmoid(prior_prob[:, :, self.latent_dim:])
+        else:
+            var2 = F.softplus(prior_prob[:, :, self.latent_dim:])
+        if OPTS.pvarbound != 0.:
+            var2 = torch.clamp(var2, 0, OPTS.pvarbound)
+        if OPTS.diracq:
+            var2 = 0.5
+            kl = math.log(var2 * math.sqrt(2 * math.pi) + 1e-8) + 0.5 * ((mu1 - mu2) ** 2 / (var2 ** 2 + 1e-8))
+            # kl = math.log(math.sqrt(2 * math.pi)) + 0.5 * ((mu1 - mu2) ** 2)
+        else:
+            kl = torch.log(var2 / (var1 + 1e-8) + 1e-8) + (
                     (torch.pow(var1, 2) + torch.pow(mu1 - mu2, 2)) / (2 * torch.pow(var2, 2))) - 0.5
         kl = kl.sum(-1)
         return kl
@@ -197,9 +209,13 @@ class LANMTModel(Transformer):
         budget_upperbound = self.KL_budget
         if self.budget_annealing:
             step = OPTS.trainer.global_step()
-            half_maxsteps = float(self.max_train_steps / 2)
-            if step > half_maxsteps:
-                rate = (float(step) - half_maxsteps) / half_maxsteps
+            if OPTS.beginanneal < 0:
+                beginstep = float(self.max_train_steps / 2)
+            else:
+                beginstep = float(OPTS.beginanneal)
+            if step > beginstep:
+                max_train_steps = min(int(self.max_train_steps/2), 50000) if OPTS.fastanneal else self.max_train_steps
+                rate = (float(step) - beginstep) / (max_train_steps - beginstep)
                 min_budget = 0.
                 budget = min_budget + (budget_upperbound - min_budget) * (1. - rate)
             else:
@@ -211,6 +227,8 @@ class LANMTModel(Transformer):
         max_mask = self.to_float((kl - budget) > 0.)
         kl = kl * max_mask + (1. - max_mask) * budget
         kl_loss = (kl * x_mask / x_mask.shape[0]).sum()
+        if OPTS.nokl:
+            kl_loss *= 0.0000001
         # Report KL divergence
         score_map["kl"] = kl_loss
         # Also report the averge KL for each token
@@ -277,8 +295,8 @@ class LANMTModel(Transformer):
             decoder_tensors.append(remain_loss)
             decoder_grads.append(None)
             torch.autograd.backward(decoder_tensors, decoder_grads)
-        if torch.isnan(score_map["loss"]) or torch.isinf(score_map["loss"]):
-            import pdb;pdb.set_trace()
+        # if torch.isnan(score_map["loss"]) or torch.isinf(score_map["loss"]):
+        #     import pdb;pdb.set_trace()
         return score_map
 
     def translate(self, x, latent=None, prior_states=None, refine_step=0):

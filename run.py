@@ -20,6 +20,7 @@ from nmtlab import MTTrainer, MTDataset
 from nmtlab.utils import OPTS, Vocab
 from nmtlab.schedulers import TransformerScheduler, SimpleScheduler
 from nmtlab.utils import is_root_node
+from nmtlab.utils.monitor import trains_stop_stdout_monitor, trains_restore_stdout_monitor
 from nmtlab.evaluation import MosesBLEUEvaluator, SacreBLEUEvaluator
 from collections import defaultdict
 import numpy as np
@@ -37,12 +38,14 @@ PRETRAINED_MODEL_MAP = {
 TRAINING_MAX_TOKENS = 60
 
 ap = ArgumentParser()
+ap.add_argument("--root", type=str, default=DATA_ROOT)
 ap.add_argument("--resume", action="store_true")
 ap.add_argument("--test", action="store_true")
 ap.add_argument("--batch_test", action="store_true")
 ap.add_argument("--train", action="store_true")
 ap.add_argument("--evaluate", action="store_true")
 ap.add_argument("--all", action="store_true")
+ap.add_argument("-tb", "--tensorboard", action="store_true")
 ap.add_argument("--use_pretrain", action="store_true", help="use pretrained model trained by Raphael Shu")
 ap.add_argument("--opt_dtok", default="", type=str, help="dataset token")
 ap.add_argument("--opt_seed", type=int, default=3, help="random seed")
@@ -74,6 +77,14 @@ ap.add_argument("--opt_Tbatch_size", default=8000, type=int, help="batch size fo
 
 # Experimental options
 ap.add_argument("--opt_fp16", action="store_true")
+ap.add_argument("--opt_nokl", action="store_true")
+ap.add_argument("--opt_klbudget", type=float, default=1.0)
+ap.add_argument("--opt_beginanneal", type=int, default=-1)
+ap.add_argument("--opt_fastanneal", action="store_true")
+ap.add_argument("--opt_diracq", action="store_true")
+ap.add_argument("--opt_sigmoidvar", action="store_true")
+ap.add_argument("--opt_pvarbound", type=float, default=0.)
+ap.add_argument("--opt_interpretability", action="store_true")
 
 # Paths
 ap.add_argument("--model_path",
@@ -81,6 +92,10 @@ ap.add_argument("--model_path",
 ap.add_argument("--result_path",
                 default="{}/lanmt.result".format(DATA_ROOT))
 OPTS.parse(ap)
+
+
+OPTS.model_path = OPTS.model_path.replace(DATA_ROOT, OPTS.root)
+OPTS.result_path = OPTS.result_path.replace(DATA_ROOT, OPTS.root)
 
 # Determine the number of GPUs to use
 horovod_installed = importlib.util.find_spec("horovod") is not None
@@ -95,8 +110,25 @@ else:
     part_index = 0
     part_num = 1
     gpu_num = 1
+
+# Tensorboard Logging
+tb_logdir = None
+OPTS.trains_task = None
 if is_root_node():
     print("Running on {} GPUs".format(gpu_num))
+    if OPTS.tensorboard:
+        try:
+            from trains import Task
+            task = Task.init(project_name="lanmt", task_name=OPTS.result_tag, auto_connect_arg_parser=False)
+            task.connect(ap)
+            task.set_random_seed(OPTS.seed)
+            task.set_output_model_id(OPTS.model_tag)
+            OPTS.trains_task = task
+        except:
+            pass
+        tb_logdir = os.path.join(OPTS.root, "tensorboard")
+        if not os.path.exists(tb_logdir):
+            os.mkdir(tb_logdir)
 
 # Get the path variables
 (
@@ -113,7 +145,7 @@ if is_root_node():
     training_warmsteps,
     training_maxsteps,
     pretrained_autoregressive_path
-) = get_dataset_paths(DATA_ROOT, OPTS.dtok)
+) = get_dataset_paths(OPTS.root, OPTS.dtok)
 
 if OPTS.longertrain:
     training_maxsteps = int(training_maxsteps * 1.5)
@@ -133,6 +165,7 @@ else:
     tgt_corpus = train_tgt_corpus
 n_valid_samples = 5000 if OPTS.finetune else 500
 if OPTS.train:
+    OPTS.batchtokens = 6144
     dataset = MTDataset(
         src_corpus=train_src_corpus, tgt_corpus=tgt_corpus,
         src_vocab=src_vocab_path, tgt_vocab=tgt_vocab_path,
@@ -156,7 +189,7 @@ lanmt_options = basic_options.copy()
 lanmt_options.update(dict(
     prior_layers=OPTS.priorl, decoder_layers=OPTS.decoderl,
     latent_dim=OPTS.latentdim,
-    KL_budget=0. if OPTS.finetune else 1.,
+    KL_budget=0. if OPTS.finetune else OPTS.klbudget,
     budget_annealing=OPTS.annealbudget,
     max_train_steps=training_maxsteps,
     fp16=OPTS.fp16
@@ -182,6 +215,7 @@ if OPTS.train or OPTS.all:
         save_path=OPTS.model_path,
         n_valid_per_epoch=n_valid_per_epoch,
         criteria="loss",
+        tensorboard_logdir=tb_logdir
     )
     # if OPTS.fp16:
     #     from apex import amp
@@ -194,7 +228,9 @@ if OPTS.train or OPTS.all:
         nmt.load(pretrain_path)
     if OPTS.resume:
         trainer.load()
+    trains_stop_stdout_monitor()
     trainer.run()
+    trains_restore_stdout_monitor()
 
 # Translation
 if OPTS.test or OPTS.all:
@@ -229,6 +265,7 @@ if OPTS.test or OPTS.all:
     lines = open(test_src_corpus).readlines()
     latent_candidate_num = OPTS.Tcandidate_num if OPTS.Tlatent_search else None
     decode_times = []
+    trains_stop_stdout_monitor()
     with open(OPTS.result_path, "w") as outf:
         for i, line in enumerate(lines):
             # Make a batch
@@ -241,6 +278,39 @@ if OPTS.test or OPTS.all:
                 # Predict latent and target words from prior
                 targets, _, prior_states = nmt.translate(x)
                 target_tokens = targets.cpu().numpy()[0].tolist()
+                if OPTS.interpretability and len(tokens) < 15 and i > 100:
+                    # For the first test example
+                    print(i, line)
+                    if i == 104 and False:
+                        # Interpolation experiment
+                        s1 = "<s> recent topics on the recycling are introduced . </s>"
+                        s2 = "<s> this paper introduces recent topics on recycling . </s>"
+                        tgt1 = torch.tensor([tgt_vocab.encode(s1.split())])
+                        tgt2 = torch.tensor([tgt_vocab.encode(s2.split())])
+                        if torch.cuda.is_available():
+                            tgt1 = tgt1.cuda()
+                            tgt2 = tgt2.cuda()
+                        z1, _ = nmt.compute_Q(x, tgt1)
+                        z2, _ = nmt.compute_Q(x, tgt2)
+                        for ratio in [0.2, 0.22, 0.24, 0.26, 0.28, 0.30, 0.32, 0.34, 0.36, 0.38, 0.4]:
+                            z = z1 * ratio + z2 * (1 - ratio)
+                            targets, _, _ = nmt.translate(x, latent=z, prior_states=prior_states,
+                                                          refine_step=1)
+                            output = " ".join(tgt_vocab.decode(targets[0].cpu().numpy().tolist()))
+                            print("interpolation=", ratio, output)
+                        raise SystemExit
+                    base_prob = nmt.prior_prob_estimator(prior_states)
+                    mean_latent = base_prob[:, :, :8]
+                    import pdb;pdb.set_trace()
+                    print("<s> {} </s>".format(line.strip()).split()[8])
+                    for _ in range(10):
+                        sampled_latent = nmt.bottleneck.sample_any_dist(base_prob)
+                        # mean_latent[0, 8:11] = sampled_latent[0, 8:11]
+                        targets, _, _ = nmt.translate(x, latent=nmt.latent2vector_nn(sampled_latent),
+                                                      prior_states=prior_states, refine_step=1)
+                        new_tokens = tgt_vocab.decode(targets[0].cpu().numpy().tolist())
+                        print(" ".join(new_tokens))
+                    raise SystemExit
                 # Interative inference
                 for infer_step in range(OPTS.Trefine_steps):
                     # Sample latent from Q and draw a new target prediction
@@ -268,6 +338,7 @@ if OPTS.test or OPTS.all:
             sys.stdout.write("\rtranslating: {:.1f}%  ".format(float(i) * 100 / len(lines)))
             sys.stdout.flush()
     sys.stdout.write("\n")
+    trains_restore_stdout_monitor()
     print("Average decoding time: {:.0f}ms, std: {:.0f}".format(np.mean(decode_times), np.std(decode_times)))
 
 # Translate multiple sentences in batch
@@ -381,6 +452,9 @@ if OPTS.evaluate or OPTS.all:
                 outf.write(line)
         # Get BLEU score
         if "wmt" in OPTS.dtok:
+            script = "{}/scripts/detokenize.perl".format(os.path.dirname(__file__))
+            os.system("perl {} < {} > {}.detok".format(script, hyp_path, hyp_path))
+            hyp_path = hyp_path + ".detok"
             evaluator = SacreBLEUEvaluator(ref_path=ref_path, tokenizer="intl", lowercase=True)
         else:
             evaluator = MosesBLEUEvaluator(ref_path=ref_path)
