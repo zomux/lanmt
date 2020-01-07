@@ -44,6 +44,7 @@ ap.add_argument("--test", action="store_true")
 ap.add_argument("--batch_test", action="store_true")
 ap.add_argument("--train", action="store_true")
 ap.add_argument("--evaluate", action="store_true")
+ap.add_argument("--analyze_latents", action="store_true")
 ap.add_argument("--all", action="store_true")
 ap.add_argument("-tb", "--tensorboard", action="store_true")
 ap.add_argument("--use_pretrain", action="store_true", help="use pretrained model trained by Raphael Shu")
@@ -65,6 +66,7 @@ ap.add_argument("--opt_latentdim", default=8, type=int, help="dimension of laten
 ap.add_argument("--opt_distill", action="store_true", help="train with knowledge distillation")
 ap.add_argument("--opt_annealbudget", action="store_true", help="switch of annealing KL budget")
 ap.add_argument("--opt_fixbug1", action="store_true", help="fix bug in length converter")
+ap.add_argument("--opt_scorenet", action="store_true")
 ap.add_argument("--opt_finetune", action="store_true",
                 help="finetune the model without limiting KL with a budget")
 
@@ -196,13 +198,26 @@ lanmt_options.update(dict(
 ))
 
 nmt = LANMTModel(**lanmt_options)
+if OPTS.scorenet:
+    from lanmt.lib_score_matching import LatentScoreNetwork
+    OPTS.shard = 0
+    lanmt_model_path = OPTS.model_path.replace("_scorenet", "")
+    assert os.path.exists(lanmt_model_path)
+    nmt.load(lanmt_model_path)
+    if torch.cuda.is_available():
+        nmt.cuda()
+    nmt = LatentScoreNetwork(nmt)
+
 
 # Training
 if OPTS.train or OPTS.all:
     # Training code
-    if OPTS.finetune:
+    if OPTS.finetune and not OPTS.scorenet:
         n_valid_per_epoch = 20
         scheduler = SimpleScheduler(max_epoch=1)
+    elif OPTS.scorenet:
+        n_valid_per_epoch = 10
+        scheduler = SimpleScheduler(max_epoch=20)
     else:
         scheduler = TransformerScheduler(warm_steps=training_warmsteps, max_steps=training_maxsteps)
     optimizer = optim.Adam(nmt.parameters(), lr=0.0001, betas=(0.9, 0.98), eps=1e-4)
@@ -220,7 +235,7 @@ if OPTS.train or OPTS.all:
     # if OPTS.fp16:
     #     from apex import amp
     #     model, optimizer = amp.initialize(nmt, optimizer, opt_level="O3")
-    if OPTS.finetune:
+    if OPTS.finetune and not OPTS.scorenet:
         pretrain_path = OPTS.model_path.replace("_finetune", "")
         if is_root_node():
             print("loading model:", pretrain_path)
@@ -258,6 +273,11 @@ if OPTS.test or OPTS.all:
     if torch.cuda.is_available():
         nmt.cuda()
     nmt.train(False)
+    if OPTS.scorenet:
+        scorenet = nmt
+        OPTS.scorenet = scorenet
+        nmt = scorenet.nmt()
+        nmt.train(False)
     src_vocab = Vocab(src_vocab_path)
     tgt_vocab = Vocab(tgt_vocab_path)
     result_path = OPTS.result_path
@@ -301,7 +321,6 @@ if OPTS.test or OPTS.all:
                         raise SystemExit
                     base_prob = nmt.prior_prob_estimator(prior_states)
                     mean_latent = base_prob[:, :, :8]
-                    import pdb;pdb.set_trace()
                     print("<s> {} </s>".format(line.strip()).split()[8])
                     for _ in range(10):
                         sampled_latent = nmt.bottleneck.sample_any_dist(base_prob)
@@ -461,3 +480,9 @@ if OPTS.evaluate or OPTS.all:
         bleu = evaluator.evaluate(hyp_path)
         print("BLEU =", bleu)
 
+if OPTS.analyze_latents:
+    from lanmt.lib_latent_analyzer import analyze_latents
+    nmt.load(OPTS.model_path)
+    if torch.cuda.is_available():
+        nmt.cuda()
+    analyze_latents(nmt, Vocab(src_vocab_path), Vocab(tgt_vocab_path), test_src_corpus, test_tgt_corpus)

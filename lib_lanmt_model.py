@@ -310,6 +310,9 @@ class LANMTModel(Transformer):
         if latent is None:
             prior_prob = self.prior_prob_estimator(prior_states)
             if not OPTS.Tlatent_search:
+                if OPTS.scorenet:
+                    z = prior_prob[:, :, :self.latent_dim]
+                    prior_prob = OPTS.scorenet.refine(z, self.x_embed_layer(x), x_mask)
                 latent = self.deterministic_sample_from_prob(prior_prob)
             else:
                 latent = self.bottleneck.sample_any_dist(prior_prob, samples=OPTS.Tcandidate_num, noise_level=0.5)
