@@ -12,9 +12,10 @@ from nmtlab.utils import OPTS
 
 class VAEBottleneck(nn.Module):
 
-    def __init__(self, hidden_size, z_size=None):
+    def __init__(self, hidden_size, z_size=None, standard_var=False):
         super(VAEBottleneck, self).__init__()
         self.hidden_size = hidden_size
+        self.standard_var = standard_var
         if z_size is None:
             self.z_size = self.hidden_size
         else:
@@ -24,6 +25,8 @@ class VAEBottleneck(nn.Module):
     def forward(self, x, sampling=True, residual_q=None):
         vec = self.dense(x)
         mu = vec[:, :, :self.z_size]
+        if self.standard_var:
+            vec[:, :, self.z_size:] = vec[:, :, self.z_size:] * 0. + 0.55
         if residual_q is not None:
             mu = 0.5 * (mu + residual_q[:, :, :self.z_size])
         if not sampling:

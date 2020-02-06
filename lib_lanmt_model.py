@@ -80,7 +80,7 @@ class LANMTModel(Transformer):
         # Decoder p(y|x,z)
         self.decoder = TransformerCrossEncoder(None, self.hidden_size, self.decoder_layers, skip_connect=True)
         # Bottleneck
-        self.bottleneck = VAEBottleneck(self.hidden_size, z_size=self.latent_dim)
+        self.bottleneck = VAEBottleneck(self.hidden_size, z_size=self.latent_dim, standard_var=OPTS.zeroprior)
         self.latent2vector_nn = nn.Linear(self.latent_dim, self.hidden_size)
         # Length prediction
         self.length_predictor = nn.Linear(self.hidden_size, 100)
@@ -254,7 +254,10 @@ class LANMTModel(Transformer):
         # ----------- Compute prior and approximated posterior -------------#
         # Compute p(z|x)
         prior_states = self.prior_encoder(x, x_mask)
-        prior_prob = self.prior_prob_estimator(prior_states)
+        if OPTS.zeroprior:
+            prior_prob = self.standard_gaussian_dist(x.shape[0], x.shape[1])
+        else:
+            prior_prob = self.prior_prob_estimator(prior_states)
         # Compute q(z|x,y) and sample z
         q_states = self.compute_Q_states(self.x_embed_layer(x), x_mask, y, y_mask)
         # Sample latent variables from q(z|x,y)
@@ -308,7 +311,10 @@ class LANMTModel(Transformer):
             prior_states = self.prior_encoder(x, x_mask)
         # Sample latent variables from prior if it's not given
         if latent is None:
-            prior_prob = self.prior_prob_estimator(prior_states)
+            if OPTS.zeroprior:
+                prior_prob = self.standard_gaussian_dist(x.shape[0], x.shape[1])
+            else:
+                prior_prob = self.prior_prob_estimator(prior_states)
             if not OPTS.Tlatent_search:
                 if OPTS.scorenet:
                     z = prior_prob[:, :, :self.latent_dim]
@@ -345,6 +351,10 @@ class LANMTModel(Transformer):
             pred = logits.argmax(-1)
 
         return pred, latent, prior_states
+
+    def standard_gaussian_dist(self, batch_size, seq_size):
+        shape = (batch_size, seq_size, self.latent_dim)
+        return torch.cat([torch.zeros(shape).cuda(), torch.ones(shape).cuda() * 0.55], 2)
 
     def get_BLEU(self, batch_y_hat, batch_y):
         """Get the average smoothed BLEU of the predictions."""

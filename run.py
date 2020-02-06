@@ -45,6 +45,8 @@ ap.add_argument("--batch_test", action="store_true")
 ap.add_argument("--train", action="store_true")
 ap.add_argument("--evaluate", action="store_true")
 ap.add_argument("--analyze_latents", action="store_true")
+ap.add_argument("--profile", action="store_true")
+ap.add_argument("--test_fix_length", type=int, default=0)
 ap.add_argument("--all", action="store_true")
 ap.add_argument("-tb", "--tensorboard", action="store_true")
 ap.add_argument("--use_pretrain", action="store_true", help="use pretrained model trained by Raphael Shu")
@@ -58,6 +60,7 @@ ap.add_argument("--opt_embedsz", type=int, default=512)
 ap.add_argument("--opt_heads", type=int, default=8)
 ap.add_argument("--opt_shard", type=int, default=32)
 ap.add_argument("--opt_longertrain", action="store_true")
+ap.add_argument("--opt_x3longertrain", action="store_true")
 
 # Options for LANMT
 ap.add_argument("--opt_priorl", type=int, default=6, help="layers for each z encoder")
@@ -67,6 +70,7 @@ ap.add_argument("--opt_distill", action="store_true", help="train with knowledge
 ap.add_argument("--opt_annealbudget", action="store_true", help="switch of annealing KL budget")
 ap.add_argument("--opt_fixbug1", action="store_true", help="fix bug in length converter")
 ap.add_argument("--opt_scorenet", action="store_true")
+ap.add_argument("--opt_denoise", action="store_true")
 ap.add_argument("--opt_finetune", action="store_true",
                 help="finetune the model without limiting KL with a budget")
 
@@ -87,6 +91,7 @@ ap.add_argument("--opt_diracq", action="store_true")
 ap.add_argument("--opt_sigmoidvar", action="store_true")
 ap.add_argument("--opt_pvarbound", type=float, default=0.)
 ap.add_argument("--opt_interpretability", action="store_true")
+ap.add_argument("--opt_zeroprior", action="store_true")
 
 # Paths
 ap.add_argument("--model_path",
@@ -151,6 +156,8 @@ if is_root_node():
 
 if OPTS.longertrain:
     training_maxsteps = int(training_maxsteps * 1.5)
+if OPTS.x3longertrain:
+    training_maxsteps = int(training_maxsteps * 3)
 
 if nmtlab.__version__ < "0.7.0":
     print("lanmt now requires nmtlab >= 0.7.0")
@@ -199,14 +206,19 @@ lanmt_options.update(dict(
 
 nmt = LANMTModel(**lanmt_options)
 if OPTS.scorenet:
-    from lanmt.lib_score_matching import LatentScoreNetwork
     OPTS.shard = 0
     lanmt_model_path = OPTS.model_path.replace("_scorenet", "")
+    lanmt_model_path = lanmt_model_path.replace("_denoise", "")
     assert os.path.exists(lanmt_model_path)
     nmt.load(lanmt_model_path)
     if torch.cuda.is_available():
         nmt.cuda()
-    nmt = LatentScoreNetwork(nmt)
+    if OPTS.denoise:
+        from lanmt.lib_denoising import LatentDenoiseNetwork
+        nmt = LatentDenoiseNetwork(nmt)
+    else:
+        from lanmt.lib_score_matching import LatentScoreNetwork
+        nmt = LatentScoreNetwork(nmt)
 
 
 # Training
@@ -285,6 +297,13 @@ if OPTS.test or OPTS.all:
     lines = open(test_src_corpus).readlines()
     latent_candidate_num = OPTS.Tcandidate_num if OPTS.Tlatent_search else None
     decode_times = []
+    if OPTS.profile:
+        lines = lines * 10
+    if OPTS.test_fix_length > 0:
+        lines = [l for l in lines if len(l.split()) == OPTS.test_fix_length]
+        if not lines:
+            raise SystemError
+        lines = [lines[0]] * 300
     trains_stop_stdout_monitor()
     with open(OPTS.result_path, "w") as outf:
         for i, line in enumerate(lines):
@@ -293,43 +312,52 @@ if OPTS.test or OPTS.all:
             x = torch.tensor([tokens])
             if torch.cuda.is_available():
                 x = x.cuda()
+            mask = torch.ne(x, 0)
             start_time = time.time()
             with torch.no_grad():
                 # Predict latent and target words from prior
-                targets, _, prior_states = nmt.translate(x)
-                target_tokens = targets.cpu().numpy()[0].tolist()
-                if OPTS.interpretability and len(tokens) < 15 and i > 100:
-                    # For the first test example
-                    print(i, line)
-                    if i == 104 and False:
-                        # Interpolation experiment
-                        s1 = "<s> recent topics on the recycling are introduced . </s>"
-                        s2 = "<s> this paper introduces recent topics on recycling . </s>"
-                        tgt1 = torch.tensor([tgt_vocab.encode(s1.split())])
-                        tgt2 = torch.tensor([tgt_vocab.encode(s2.split())])
-                        if torch.cuda.is_available():
-                            tgt1 = tgt1.cuda()
-                            tgt2 = tgt2.cuda()
-                        z1, _ = nmt.compute_Q(x, tgt1)
-                        z2, _ = nmt.compute_Q(x, tgt2)
-                        for ratio in [0.2, 0.22, 0.24, 0.26, 0.28, 0.30, 0.32, 0.34, 0.36, 0.38, 0.4]:
-                            z = z1 * ratio + z2 * (1 - ratio)
-                            targets, _, _ = nmt.translate(x, latent=z, prior_states=prior_states,
-                                                          refine_step=1)
-                            output = " ".join(tgt_vocab.decode(targets[0].cpu().numpy().tolist()))
-                            print("interpolation=", ratio, output)
-                        raise SystemExit
-                    base_prob = nmt.prior_prob_estimator(prior_states)
-                    mean_latent = base_prob[:, :, :8]
-                    print("<s> {} </s>".format(line.strip()).split()[8])
-                    for _ in range(10):
-                        sampled_latent = nmt.bottleneck.sample_any_dist(base_prob)
-                        # mean_latent[0, 8:11] = sampled_latent[0, 8:11]
-                        targets, _, _ = nmt.translate(x, latent=nmt.latent2vector_nn(sampled_latent),
-                                                      prior_states=prior_states, refine_step=1)
-                        new_tokens = tgt_vocab.decode(targets[0].cpu().numpy().tolist())
-                        print(" ".join(new_tokens))
-                    raise SystemExit
+                if not OPTS.scorenet:
+                    targets, _, prior_states = nmt.translate(x)
+                    target_tokens = targets.cpu().numpy()[0].tolist()
+                if OPTS.scorenet:
+                    prior_states = nmt.prior_encoder(x, mask)
+                    z = torch.zeros((1, x.shape[1], 8)).cuda()
+                    latent = scorenet.refine(z, prior_states, mask)
+                    latent = nmt.latent2vector_nn(latent)
+                    targets, _, _ = nmt.translate(x, latent=latent, prior_states=prior_states, refine_step=1)
+                    target_tokens = targets.cpu().numpy()[0].tolist()
+                # if OPTS.interpretability and len(tokens) < 15 and i > 100:
+                #     # For the first test example
+                #     print(i, line)
+                #     if i == 104 and False:
+                #         # Interpolation experiment
+                #         s1 = "<s> recent topics on the recycling are introduced . </s>"
+                #         s2 = "<s> this paper introduces recent topics on recycling . </s>"
+                #         tgt1 = torch.tensor([tgt_vocab.encode(s1.split())])
+                #         tgt2 = torch.tensor([tgt_vocab.encode(s2.split())])
+                #         if torch.cuda.is_available():
+                #             tgt1 = tgt1.cuda()
+                #             tgt2 = tgt2.cuda()
+                #         z1, _ = nmt.compute_Q(x, tgt1)
+                #         z2, _ = nmt.compute_Q(x, tgt2)
+                #         for ratio in [0.2, 0.22, 0.24, 0.26, 0.28, 0.30, 0.32, 0.34, 0.36, 0.38, 0.4]:
+                #             z = z1 * ratio + z2 * (1 - ratio)
+                #             targets, _, _ = nmt.translate(x, latent=z, prior_states=prior_states,
+                #                                           refine_step=1)
+                #             output = " ".join(tgt_vocab.decode(targets[0].cpu().numpy().tolist()))
+                #             print("interpolation=", ratio, output)
+                #         raise SystemExit
+                #     base_prob = nmt.prior_prob_estimator(prior_states)
+                #     mean_latent = base_prob[:, :, :8]
+                #     print("<s> {} </s>".format(line.strip()).split()[8])
+                #     for _ in range(10):
+                #         sampled_latent = nmt.bottleneck.sample_any_dist(base_prob)
+                #         # mean_latent[0, 8:11] = sampled_latent[0, 8:11]
+                #         targets, _, _ = nmt.translate(x, latent=nmt.latent2vector_nn(sampled_latent),
+                #                                       prior_states=prior_states, refine_step=1)
+                #         new_tokens = tgt_vocab.decode(targets[0].cpu().numpy().tolist())
+                #         print(" ".join(new_tokens))
+                #     raise SystemExit
                 # Interative inference
                 for infer_step in range(OPTS.Trefine_steps):
                     # Sample latent from Q and draw a new target prediction
@@ -483,6 +511,14 @@ if OPTS.evaluate or OPTS.all:
 if OPTS.analyze_latents:
     from lanmt.lib_latent_analyzer import analyze_latents
     nmt.load(OPTS.model_path)
+    if OPTS.scorenet:
+        scorenet = nmt
+        OPTS.scorenet = scorenet
+        scorenet.train(False)
+        if torch.cuda.is_available():
+            scorenet.cuda()
+        nmt = scorenet.nmt()
+
     if torch.cuda.is_available():
         nmt.cuda()
     analyze_latents(nmt, Vocab(src_vocab_path), Vocab(tgt_vocab_path), test_src_corpus, test_tgt_corpus)
