@@ -99,21 +99,41 @@ if is_root_node():
     print("Running on {} GPUs".format(gpu_num))
 
 # Get the path variables
-(
-    train_src_corpus,
-    train_tgt_corpus,
-    distilled_tgt_corpus,
-    truncate_datapoints,
-    test_src_corpus,
-    test_tgt_corpus,
-    ref_path,
-    src_vocab_path,
-    tgt_vocab_path,
-    n_valid_per_epoch,
-    training_warmsteps,
-    training_maxsteps,
-    pretrained_autoregressive_path
-) = get_dataset_paths(DATA_ROOT, OPTS.dtok)
+# (
+#     train_src_corpus,
+#     train_tgt_corpus,
+#     valid_src_corpus,
+#     valid_tgt_corpus,
+#     distilled_tgt_corpus,
+#     truncate_datapoints,
+#     test_src_corpus,
+#     test_tgt_corpus,
+#     ref_path,
+#     src_vocab_path,
+#     tgt_vocab_path,
+#     n_valid_per_epoch,
+#     training_warmsteps,
+#     training_maxsteps,
+#     pretrained_autoregressive_path
+# ) = get_dataset_paths(DATA_ROOT, OPTS.dtok)
+
+corpus_dict = get_dataset_paths(DATA_ROOT, OPTS.dtok)
+train_src_corpus = corpus_dict["train_src_corpus"]
+train_tgt_corpus = corpus_dict["train_tgt_corpus"]
+valid_src_corpus = corpus_dict["valid_src_corpus"]
+valid_tgt_corpus = corpus_dict["valid_tgt_corpus"]
+distilled_tgt_corpus = corpus_dict["distilled_tgt_corpus"]
+distilled_valid_tgt_corpus = corpus_dict["distilled_valid_tgt_corpus"]
+truncate_datapoints = corpus_dict["truncate_datapoints"]
+test_src_corpus = corpus_dict["test_src_corpus"]
+test_tgt_corpus = corpus_dict["test_tgt_corpus"]
+ref_path = corpus_dict["ref_path"]
+src_vocab_path = corpus_dict["src_vocab_path"]
+tgt_vocab_path = corpus_dict["tgt_vocab_path"]
+n_valid_per_epoch = corpus_dict["n_valid_per_epoch"]
+training_warmsteps = corpus_dict["training_warmsteps"]
+training_maxsteps = corpus_dict["training_maxsteps"]
+pretrained_autoregressive_path = corpus_dict["pretrained_autoregressive_path"]
 
 if OPTS.longertrain:
     training_maxsteps = int(training_maxsteps * 1.5)
@@ -129,16 +149,19 @@ if OPTS.fp16:
 # Define dataset
 if OPTS.distill:
     tgt_corpus = distilled_tgt_corpus
+    tgt_valid = distilled_valid_tgt_corpus
 else:
     tgt_corpus = train_tgt_corpus
-n_valid_samples = 5000 if OPTS.finetune else 500
+    tgt_valid = valid_tgt_corpus
+# n_valid_samples = 5000 if OPTS.finetune else 500
 if OPTS.train:
     dataset = MTDataset(
         src_corpus=train_src_corpus, tgt_corpus=tgt_corpus,
         src_vocab=src_vocab_path, tgt_vocab=tgt_vocab_path,
         batch_size=OPTS.batchtokens * gpu_num, batch_type="token",
         truncate=truncate_datapoints, max_length=TRAINING_MAX_TOKENS,
-        n_valid_samples=n_valid_samples)
+        n_valid_samples=0)
+    dataset.use_valid_corpus(src_corpus=valid_src_corpus, tgt_corpus=tgt_valid)
 else:
     dataset = None
 

@@ -41,19 +41,42 @@ def get_dataset_paths(data_root, dataset_tok):
         training_warmsteps = 4000
         training_maxsteps = 100000
         pretrained_autoregressive_path = "{}/wmt14_ende_teacher.pt".format(data_root)
+    if dataset_tok == "valid_test":
+        train_src_corpus = "{}/wmt14_ende_train.en.sp".format(data_root)
+        train_tgt_corpus = "{}/wmt14_ende_train.de.sp".format(data_root)
+        distilled_tgt_corpus = "{}/wmt14_ende.distill.tgt".format(data_root)
+        valid_src_corpus = "{}/wmt14_ende_test.en.sp".format(data_root)
+        valid_tgt_corpus = "{}/wmt14_ende_test.de.sp".format(data_root)
+        distilled_valid_tgt_corpus = "{}/wmt14_ende_test.de.sp".format(data_root)
+        truncate_datapoints = None
 
-    return (
-        train_src_corpus,
-        train_tgt_corpus,
-        distilled_tgt_corpus,
-        truncate_datapoints,
-        test_src_corpus,
-        test_tgt_corpus,
-        ref_path,
-        src_vocab_path,
-        tgt_vocab_path,
-        n_valid_per_epoch,
-        training_warmsteps,
-        training_maxsteps,
-        pretrained_autoregressive_path
-    )
+        test_src_corpus = "{}/wmt14_ende_test.en.sp".format(data_root)
+        test_tgt_corpus = "{}/wmt14_ende_test.de.sp".format(data_root)
+        ref_path = "{}/wmt14_ende_test.de".format(data_root)
+
+        src_vocab_path = "{}/wmt14.en.sp.vocab".format(data_root)
+        tgt_vocab_path = "{}/wmt14.de.sp.vocab".format(data_root)
+
+        n_valid_per_epoch = 8
+        training_warmsteps = 4000
+        training_maxsteps = 100000
+        pretrained_autoregressive_path = "{}/wmt14_ende_teacher.pt".format(data_root)
+
+    return {
+        "train_src_corpus": train_src_corpus,
+        "train_tgt_corpus": train_tgt_corpus,
+        "valid_src_corpus": valid_src_corpus,
+        "valid_tgt_corpus": valid_tgt_corpus,
+        "distilled_tgt_corpus": distilled_tgt_corpus,
+        "distilled_valid_tgt_corpus": distilled_valid_tgt_corpus,
+        "truncate_datapoints": truncate_datapoints,
+        "test_src_corpus": test_src_corpus,
+        "test_tgt_corpus": test_tgt_corpus,
+        "ref_path": ref_path,
+        "src_vocab_path": src_vocab_path,
+        "tgt_vocab_path": tgt_vocab_path,
+        "n_valid_per_epoch": n_valid_per_epoch,
+        "training_warmsteps": training_warmsteps,
+        "training_maxsteps": training_maxsteps,
+        "pretrained_autoregressive_path": pretrained_autoregressive_path
+    }
