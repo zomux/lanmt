@@ -47,7 +47,6 @@ def get_dataset_paths(data_root, dataset_tok):
         distilled_tgt_corpus = "{}/wmt14_ende.distill.tgt".format(data_root)
         valid_src_corpus = "{}/wmt14_ende_test.en.sp".format(data_root)
         valid_tgt_corpus = "{}/wmt14_ende_test.de.sp".format(data_root)
-        distilled_valid_tgt_corpus = "{}/wmt14_ende_test.de.sp".format(data_root)
         truncate_datapoints = None
 
         test_src_corpus = "{}/wmt14_ende_test.en.sp".format(data_root)
@@ -68,7 +67,6 @@ def get_dataset_paths(data_root, dataset_tok):
         "valid_src_corpus": valid_src_corpus,
         "valid_tgt_corpus": valid_tgt_corpus,
         "distilled_tgt_corpus": distilled_tgt_corpus,
-        "distilled_valid_tgt_corpus": distilled_valid_tgt_corpus,
         "truncate_datapoints": truncate_datapoints,
         "test_src_corpus": test_src_corpus,
         "test_tgt_corpus": test_tgt_corpus,

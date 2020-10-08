@@ -123,7 +123,6 @@ train_tgt_corpus = corpus_dict["train_tgt_corpus"]
 valid_src_corpus = corpus_dict["valid_src_corpus"]
 valid_tgt_corpus = corpus_dict["valid_tgt_corpus"]
 distilled_tgt_corpus = corpus_dict["distilled_tgt_corpus"]
-distilled_valid_tgt_corpus = corpus_dict["distilled_valid_tgt_corpus"]
 truncate_datapoints = corpus_dict["truncate_datapoints"]
 test_src_corpus = corpus_dict["test_src_corpus"]
 test_tgt_corpus = corpus_dict["test_tgt_corpus"]
@@ -149,10 +148,8 @@ if OPTS.fp16:
 # Define dataset
 if OPTS.distill:
     tgt_corpus = distilled_tgt_corpus
-    tgt_valid = distilled_valid_tgt_corpus
 else:
     tgt_corpus = train_tgt_corpus
-    tgt_valid = valid_tgt_corpus
 # n_valid_samples = 5000 if OPTS.finetune else 500
 if OPTS.train:
     dataset = MTDataset(
@@ -161,7 +158,7 @@ if OPTS.train:
         batch_size=OPTS.batchtokens * gpu_num, batch_type="token",
         truncate=truncate_datapoints, max_length=TRAINING_MAX_TOKENS,
         n_valid_samples=0)
-    dataset.use_valid_corpus(src_corpus=valid_src_corpus, tgt_corpus=tgt_valid)
+    dataset.use_valid_corpus(src_corpus=valid_src_corpus, tgt_corpus=valid_tgt_corpus)
 else:
     dataset = None
 
