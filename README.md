@@ -1,7 +1,6 @@
 LaNMT: Latent-variable Non-autoregressive Neural Machine Translation with Deterministic Inference
 ===
 
->>> Update: this paper is accepted by AAAI 2020.
 
 LaNMT implements a latent-variable framework for non-autoregressive neural machine translation. As you can guess from the code, it's has a simple architecture but powerful performance. For the details of this model, you can check our paper on Arxiv https://arxiv.org/abs/1908.07181 . To cite the paper:
 
