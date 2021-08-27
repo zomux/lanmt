@@ -68,7 +68,7 @@ class TransformerCrossEncoderLayer(nn.Module):
         h1 = residual_connect(h1, x)
         # Cross-attention
         h2 = self.layer_norm2(h1)
-        h2, _ = self.attention(h2, y, y, mask=y_mask)
+        h2, _ = self.cross_attention(h2, y, y, mask=y_mask)
         h2 = self.dropout(h2)
         h2 = residual_connect(h2, h1)
         # Feed-forward layer
